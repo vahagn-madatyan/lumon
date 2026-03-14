@@ -50,7 +50,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Core control-shell refactor** `risk:high` `depends:[]`
+- [x] **S01: Core control-shell refactor** `risk:high` `depends:[]`
   > After this: the current prototype runs on a canonical Lumon app state and shared selectors instead of scattered mock-only view data.
 
 - [ ] **S02: Project registry and persistence** `risk:high` `depends:[S01]`

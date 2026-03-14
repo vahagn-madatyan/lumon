@@ -4,7 +4,7 @@
 
 Lumon is a local-first mission control dashboard for a single operator running multiple software-product initiatives from idea intake through research, approval, repo provisioning, GSD handoff, and autonomous build supervision.
 
-The current repository contains a strong visual prototype and architecture thinking, but it is not yet a working orchestration system. M001 turns the existing prototype into the real control surface the later milestones will plug into.
+The current repository contains a strong visual prototype and architecture thinking, and M001 is turning it into the real control surface the later milestones will plug into.
 
 ## Core Value
 
@@ -12,18 +12,20 @@ One operator can see where every project stands, understand what each agent is d
 
 ## Current State
 
-- Vite + React prototype with a mission-control dashboard and a distinctive Severance-inspired floor simulation.
-- Existing architecture documents describe a future local-first runtime built around a custom server, tmux, SQLite, git worktrees, GSD, and remote access.
-- Current UI is powered by mock data and duplicated view-specific state rather than a canonical project model.
-- No real project persistence, no stage-gated intake workflow, no n8n orchestration, no repo provisioning, and no live agent runtime yet.
+- Vite + React control shell now runs through a canonical `src/lumon/*` state spine with reducer, provider, seed data, and shared selectors.
+- The mission-control UI has been split into provider-backed dashboard, orchestration, architecture, terminal, and modal surface modules instead of one monolith.
+- The Severance-inspired floor now renders from deterministic seeded layout data and the same project/agent truth as the dashboard.
+- Vitest + React Testing Library contract/integration tests prove reducer selectors and cross-surface synchronization.
+- Still missing: project persistence, explicit pre-build stage/approval progression, dossier/handoff packet views, repo/GSD integrations, and live runtime telemetry.
 
 ## Architecture / Key Patterns
 
-- Frontend-first prototype centered in `src/mission-control.jsx`, `src/severance-floor.jsx`, and `src/components/ui/*`.
-- React 19 + Vite + `@xyflow/react` are already in use and match the dashboard/workflow visualization direction.
-- The current code leans on rich mock data; M001 should replace this with a canonical Lumon domain model that all surfaces consume.
+- Canonical domain and selector layer lives in `src/lumon/*` and is the source of truth for project, agent, orchestration, and floor view models.
+- `src/features/mission-control/*` contains provider-backed surface modules; local-only interaction state stays local unless it affects shared domain truth.
+- `src/severance-floor.jsx` is now a presentational/interaction shell over `selectFloorViewModel` plus seeded floor-layout helpers.
+- React 19 + Vite + `@xyflow/react` remain the UI foundation for the dashboard/workflow visualization direction.
 - The Severance-style presentation is part of the product value, not disposable polish.
-- Later milestones will connect the control surface to n8n, GitHub, GSD, agent runtimes, registrar APIs, and trademark/status lookups.
+- Later milestones will connect the control surface to local persistence, n8n, GitHub, GSD, agent runtimes, registrar APIs, and trademark/status lookups.
 
 ## Capability Contract
 

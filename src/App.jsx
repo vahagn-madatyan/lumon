@@ -1,5 +1,5 @@
-import MissionControl from './mission-control'
+import MissionControl from "./mission-control";
 
-export default function App() {
-  return <MissionControl />
+export default function App({ initialState }) {
+  return <MissionControl initialState={initialState} />;
 }

@@ -1,0 +1,249 @@
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLumonActions, useLumonSelector } from "@/lumon/context";
+import {
+  selectDashboardCards,
+  selectDashboardProjects,
+  selectSelectedAgentDetail,
+  selectSelectedProjectDetail,
+} from "@/lumon/selectors";
+import {
+  Activity,
+  DollarSign,
+  Hash,
+  Plus,
+  TriangleAlert,
+  Zap,
+} from "lucide-react";
+import TerminalPanel from "./TerminalPanel";
+
+const CARD_ICONS = {
+  active: Activity,
+  total: Hash,
+  cost: DollarSign,
+  tokens: Zap,
+};
+
+const TONE_CLASSES = {
+  success: "text-emerald-400",
+  info: "text-blue-400",
+  warning: "text-amber-400",
+  accent: "text-purple-400",
+};
+
+const STATUS_CLASSES = {
+  running: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  complete: "bg-green-500/15 text-green-400 border-green-500/30",
+  failed: "bg-red-500/15 text-red-400 border-red-500/30",
+  queued: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+};
+
+function StatusBadge({ status }) {
+  return (
+    <Badge
+      variant="outline"
+      className={`font-mono text-[10px] font-bold tracking-widest uppercase ${STATUS_CLASSES[status] ?? STATUS_CLASSES.queued}`}
+    >
+      {status}
+    </Badge>
+  );
+}
+
+function MetricCard({ card }) {
+  const Icon = CARD_ICONS[card.id] ?? Activity;
+  const toneClass = TONE_CLASSES[card.tone] ?? "text-zinc-300";
+
+  return (
+    <Card className="bg-zinc-900/60 border-zinc-800">
+      <CardContent className="p-2.5 text-center">
+        <Icon size={12} className={`mx-auto mb-1 opacity-60 ${toneClass}`} />
+        <div className={`text-lg font-bold ${toneClass}`}>{card.value}</div>
+        <div className="text-[9px] text-zinc-500 tracking-[0.08em] uppercase">{card.label}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function DashboardTab({ onOpenNewProject, pendingIntakes = [] }) {
+  const dashboardCards = useLumonSelector(selectDashboardCards);
+  const projects = useLumonSelector(selectDashboardProjects);
+  const selectedAgent = useLumonSelector(selectSelectedAgentDetail);
+  const selectedProject = useLumonSelector(selectSelectedProjectDetail);
+  const { selectAgent, selectProject } = useLumonActions();
+
+  return (
+    <div className="flex h-full">
+      <ScrollArea className="w-[420px] border-r border-zinc-800">
+        <div className="p-4 space-y-4">
+          <div className="grid grid-cols-4 gap-2">
+            {dashboardCards.map((card) => (
+              <MetricCard key={card.id} card={card} />
+            ))}
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onOpenNewProject}
+            className="w-full border-dashed border-emerald-500/25 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/40 font-mono text-[11px] font-semibold tracking-[0.08em]"
+          >
+            <Plus size={14} className="mr-2" />
+            Spawn new project
+          </Button>
+
+          {pendingIntakes.length > 0 && (
+            <Card className="bg-amber-500/5 border-amber-500/20">
+              <CardContent className="p-3 space-y-2">
+                <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-amber-400">
+                  <TriangleAlert size={12} />
+                  Pending intake queue
+                </div>
+                <div className="space-y-2">
+                  {pendingIntakes.map((intake) => (
+                    <div key={intake.id} className="rounded border border-amber-500/15 bg-zinc-950/70 px-2.5 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-[11px] font-semibold text-zinc-200">{intake.name}</span>
+                        <span className="font-mono text-[9px] text-zinc-500">{intake.createdAt}</span>
+                      </div>
+                      <div className="mt-1 text-[10px] font-mono text-zinc-400">{intake.description}</div>
+                      <div className="mt-1 flex gap-3 text-[9px] font-mono text-zinc-500 uppercase tracking-[0.08em]">
+                        <span>{intake.agentType}</span>
+                        <span>{intake.agentCount} agents</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="space-y-3">
+            {projects.map((project) => (
+              <Card
+                key={project.id}
+                className={`border transition-colors ${
+                  project.isSelected
+                    ? "border-emerald-500/30 bg-emerald-500/5"
+                    : "bg-zinc-900/60 border-zinc-800"
+                }`}
+              >
+                <CardContent className="p-3.5">
+                  <button
+                    type="button"
+                    onClick={() => selectProject(project.id)}
+                    className="w-full text-left"
+                    aria-label={`Select ${project.name} project`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-mono text-[13px] font-bold text-zinc-200">{project.name}</div>
+                        <div className="mt-1 font-mono text-[10px] text-zinc-500">
+                          {project.phaseLabel} · {project.waveLabel}
+                        </div>
+                        <div className="mt-2 font-mono text-[11px] text-zinc-400 leading-relaxed">
+                          {project.description}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <StatusBadge status={project.status} />
+                        <Badge variant="secondary" className="bg-zinc-800 text-zinc-500 text-[9px] border-none font-mono">
+                          {project.agentCount} agent{project.agentCount === 1 ? "" : "s"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="mt-3 flex gap-2 text-[9px] font-mono uppercase tracking-[0.08em] text-zinc-500">
+                    <span>{project.metrics.running} running</span>
+                    <span>{project.metrics.queued} queued</span>
+                    <span>{project.metrics.complete} complete</span>
+                    <span>{project.metrics.failed} failed</span>
+                  </div>
+
+                  <div className="mt-3 flex flex-col gap-1.5">
+                    {project.agents.map((agent) => (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        onClick={() => selectAgent(agent.id)}
+                        aria-label={`Select ${agent.name}`}
+                        className={`rounded-lg border px-3 py-2 text-left transition-all ${
+                          agent.isSelected
+                            ? "border-emerald-500/40 bg-emerald-500/5"
+                            : "border-zinc-800 bg-zinc-950/70 hover:border-zinc-700"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-mono text-[11px] font-semibold text-zinc-200">{agent.name}</div>
+                            <div className="mt-1 font-mono text-[10px] text-zinc-500">
+                              {agent.modelLabel} · {agent.planId} · Wave {agent.wave}
+                            </div>
+                          </div>
+                          <StatusBadge status={agent.status} />
+                        </div>
+                        <div className="mt-2 font-mono text-[11px] text-zinc-400 leading-relaxed">
+                          {agent.task}
+                        </div>
+                        <div className="mt-2 h-[3px] rounded-full bg-zinc-800 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${agent.status === "failed" ? "bg-red-500" : agent.status === "complete" ? "bg-green-500" : "bg-emerald-400"}`}
+                            style={{ width: `${agent.progress}%` }}
+                          />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </ScrollArea>
+
+      <div className="flex-1 p-4 flex flex-col min-h-0 gap-3">
+        {selectedProject && (
+          <Card className="bg-zinc-900/60 border-zinc-800">
+            <CardContent className="p-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2.5">
+                  <h2 className="font-mono text-sm font-bold text-zinc-200">{selectedProject.name}</h2>
+                  <StatusBadge status={selectedProject.status} />
+                </div>
+                <div className="mt-1 font-mono text-[11px] text-zinc-500">
+                  {selectedProject.phaseLabel} · {selectedProject.waveLabel}
+                </div>
+                <div className="mt-2 font-mono text-[11px] text-zinc-400 max-w-2xl">
+                  {selectedProject.description}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 text-[10px] font-mono">
+                {[
+                  { label: "Running", value: selectedProject.metrics.running },
+                  { label: "Queued", value: selectedProject.metrics.queued },
+                  { label: "Complete", value: selectedProject.metrics.complete },
+                  { label: "Failed", value: selectedProject.metrics.failed },
+                ].map((metric) => (
+                  <div key={metric.label} className="rounded border border-zinc-800 bg-zinc-950/70 px-2.5 py-2">
+                    <div className="uppercase tracking-[0.08em] text-zinc-600">{metric.label}</div>
+                    <div className="mt-1 text-zinc-200 font-semibold">{metric.value}</div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="flex-1 min-h-0">
+          <TerminalPanel
+            key={`${selectedAgent?.id ?? "no-agent"}:${selectedAgent?.status ?? "idle"}`}
+            agent={selectedAgent}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

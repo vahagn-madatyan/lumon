@@ -14,17 +14,6 @@ Guidelines:
 
 ## Active
 
-### R001 — Single-operator mission control dashboard
-- Class: primary-user-loop
-- Status: active
-- Description: Lumon must operate as a control room for one owner-operator managing many software-product initiatives.
-- Why it matters: The first version is explicitly optimized for one person who wants clarity and throughput, not team collaboration overhead.
-- Source: user
-- Primary owning slice: M001/S01
-- Supporting slices: M001/S03, M001/S05, M001/S06
-- Validation: mapped
-- Notes: Multi-operator support is intentionally deferred.
-
 ### R002 — Multi-project registry and lifecycle tracking
 - Class: core-capability
 - Status: active
@@ -236,7 +225,17 @@ Guidelines:
 
 ## Validated
 
-No requirements are validated yet. This is a bootstrap planning pass; no capability has been proven by implementation and verification.
+### R001 — Single-operator mission control dashboard
+- Class: primary-user-loop
+- Status: validated
+- Description: Lumon must operate as a control room for one owner-operator managing many software-product initiatives.
+- Why it matters: The first version is explicitly optimized for one person who wants clarity and throughput, not team collaboration overhead.
+- Source: user
+- Primary owning slice: M001/S01
+- Supporting slices: M001/S03, M001/S05, M001/S06
+- Validation: validated
+- Notes: Multi-operator support is intentionally deferred.
+
 
 ## Deferred
 
@@ -345,7 +344,7 @@ No requirements are validated yet. This is a bootstrap planning pass; no capabil
 
 | ID | Class | Status | Primary owner | Supporting | Proof |
 |---|---|---|---|---|---|
-| R001 | primary-user-loop | active | M001/S01 | M001/S03, M001/S05, M001/S06 | mapped |
+| R001 | primary-user-loop | validated | M001/S01 | M001/S03, M001/S05, M001/S06 | validated |
 | R002 | core-capability | active | M001/S02 | M001/S06 | mapped |
 | R003 | primary-user-loop | active | M001/S03 | M002 (provisional) | mapped |
 | R004 | operability | active | M002 (provisional) | M001/S03 | mapped |
@@ -377,7 +376,7 @@ No requirements are validated yet. This is a bootstrap planning pass; no capabil
 
 ## Coverage Summary
 
-- Active requirements: 20
+- Active requirements: 19
 - Mapped to slices or provisional milestone owners: 20
-- Validated: 0
+- Validated: 1
 - Unmapped active requirements: 0

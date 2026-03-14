@@ -18,6 +18,13 @@ const MSGS = [
   "PLEASE ENJOY ALL TOKENS EQUALLY",
   "YOU SMASH IT. THAT IS YOUR TASK.",
 ];
+const BREAK_ROOM_STATEMENTS = [
+  "I WILL NOT CAUSE ERRORS IN PRODUCTION",
+  "I WILL NOT DEVIATE FROM THE PROCESS",
+  "I CAUSED AN ERROR AND I ACCEPT MY FAULT",
+  "MY ACTIONS HAVE CONSEQUENCES FOR THE TEAM",
+  "I WILL EXECUTE MY TASKS WITHOUT FAILURE",
+];
 
 // ── Pixel sprites (8×8) ─────────────────────────────────────────
 // H=hair S=skin B=body P=pants E=eyes O=outline W=white D=dark
@@ -52,6 +59,41 @@ function Px({ sp, pal, p = 3, cls = "" }) {
       <div style={{ position: "absolute", top: 0, left: 0, width: p, height: p, boxShadow: sh, background: "transparent" }} />
     </div>
   );
+}
+
+const STATUS_BADGE_LABELS = {
+  failed: "BREAK ROOM",
+  running: "running",
+  complete: "complete",
+  queued: "queued",
+};
+
+const hashSeed = (value) => {
+  let hash = 2166136261;
+  const input = String(value ?? "");
+
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+};
+
+const seededFraction = (value, salt) => (hashSeed(`${value}:${salt}`) % 1000) / 999;
+const seededRange = (value, salt, min, max) => min + seededFraction(value, salt) * (max - min);
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const formatFloorStatus = (status) => STATUS_BADGE_LABELS[status] ?? status;
+
+function useTicker(intervalMs) {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setTick((current) => current + 1), intervalMs);
+    return () => window.clearInterval(intervalId);
+  }, [intervalMs]);
+
+  return tick;
 }
 
 // ── Pan + Zoom hook ──────────────────────────────────────────────
@@ -97,48 +139,33 @@ function usePanZoom(containerRef) {
 }
 
 // ── Wandering agent (idle/queued/complete walk to amenity areas) ─
-function WanderingAgent({ agent, palIdx, target }) {
-  const [pos, setPos] = useState(() => ({ x: target.x + Math.random() * 40, y: target.y + Math.random() * 40 }));
-  const [frame, setFrame] = useState(0);
-  const [facing, setFacing] = useState(1);
-  const [atTarget, setAtTarget] = useState(false);
-  const [waitTicks, setWaitTicks] = useState(0);
-  const targetRef = useRef(target);
+function WanderingAgent({ agent, palIdx, room }) {
+  const tick = useTicker(120);
+  const motion = useMemo(() => {
+    const usableWidth = Math.max(room.w - 60, 26);
+    const usableHeight = Math.max(room.h - 60, 20);
 
-  useEffect(() => { targetRef.current = target; }, [target]);
+    return {
+      centerX: room.x + 20 + seededRange(agent.id, "wander-origin-x", 0, usableWidth),
+      centerY: room.y + 28 + seededRange(agent.id, "wander-origin-y", 0, usableHeight),
+      amplitudeX: seededRange(agent.id, "wander-amplitude-x", 8, Math.max(usableWidth / 2, 18)),
+      amplitudeY: seededRange(agent.id, "wander-amplitude-y", 6, Math.max(usableHeight / 2, 14)),
+      phase: seededRange(agent.id, "wander-phase", 0, Math.PI * 2),
+      drift: seededRange(agent.id, "wander-drift", 0.75, 1.35),
+      cadence: seededRange(agent.id, "wander-cadence", 8, 16),
+    };
+  }, [agent.id, room.h, room.w, room.x, room.y]);
 
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setFrame((f) => (f + 1) % 2);
-      if (atTarget) {
-        setWaitTicks((w) => {
-          if (w <= 0) {
-            setAtTarget(false);
-            targetRef.current = { x: target.x + (Math.random() - 0.5) * 60, y: target.y + (Math.random() - 0.5) * 40 };
-            return 0;
-          }
-          return w - 1;
-        });
-        return;
-      }
-      setPos((p) => {
-        const t = targetRef.current;
-        const dx = t.x - p.x, dy = t.y - p.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 4) { setAtTarget(true); setWaitTicks(20 + Math.floor(Math.random() * 40)); return p; }
-        const speed = 1.2 + Math.random() * 0.5;
-        if (dx !== 0) setFacing(dx > 0 ? 1 : -1);
-        return { x: p.x + (dx / dist) * speed, y: p.y + (dy / dist) * speed };
-      });
-    }, 120);
-    return () => clearInterval(iv);
-  }, [atTarget, target]);
-
+  const angle = tick / motion.cadence + motion.phase;
+  const left = motion.centerX + Math.sin(angle) * motion.amplitudeX;
+  const top = motion.centerY + Math.cos(angle * motion.drift) * motion.amplitudeY;
+  const facing = Math.cos(angle) >= 0 ? 1 : -1;
+  const isPaused = Math.sin(angle * 2.5) > 0.82;
   const pal = PALS[palIdx % PALS.length];
-  const sp = atTarget ? SP_IDLE : (frame ? SP_WALK2 : SP_WALK1);
+  const sp = isPaused ? SP_IDLE : tick % 2 ? SP_WALK2 : SP_WALK1;
 
   return (
-    <div className="absolute z-20 pointer-events-none" style={{ left: pos.x, top: pos.y, transform: `scaleX(${facing})`, transition: "left 120ms linear, top 120ms linear" }}>
+    <div className="absolute z-20 pointer-events-none" style={{ left, top, transform: `scaleX(${facing})`, transition: "left 120ms linear, top 120ms linear" }}>
       <Px sp={sp} pal={pal} p={2} />
       <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap" style={{ transform: `scaleX(${facing})` }}>
         <span className="font-mono text-[5px] text-zinc-600">{agent.name}</span>
@@ -148,7 +175,7 @@ function WanderingAgent({ agent, palIdx, target }) {
 }
 
 // ── Break Room Agent (punishment — reading the statement) ────────
-function BreakRoomAgent({ agent, palIdx, seatIndex }) {
+function BreakRoomAgent({ agent, palIdx }) {
   const [f, sF] = useState(0);
   useEffect(() => {
     const iv = setInterval(() => sF((v) => (v + 1) % 2), 600);
@@ -176,35 +203,27 @@ function BreakRoomAgent({ agent, palIdx, seatIndex }) {
 }
 
 // ── Boss ─────────────────────────────────────────────────────────
-function Boss({ canvasW, canvasH }) {
-  const [pos, setPos] = useState({ x: 400, y: 200 });
-  const [dir, setDir] = useState({ dx: 1.1, dy: 0.5 });
-  const [paused, setPaused] = useState(false);
-  const [pt, setPt] = useState(0);
-  const [facing, setFacing] = useState(1);
-  const [frame, setFrame] = useState(0);
-
-  useEffect(() => {
-    const iv = setInterval(() => {
-      setFrame((f) => (f + 1) % 2);
-      if (paused) { setPt((t) => { if (t <= 0) { setPaused(false); return 0; } return t - 1; }); return; }
-      setPos((p) => {
-        let nx = p.x + dir.dx, ny = p.y + dir.dy, ndx = dir.dx, ndy = dir.dy;
-        if (nx < 40 || nx > canvasW - 60) { ndx = -ndx; setFacing(ndx > 0 ? 1 : -1); }
-        if (ny < 40 || ny > canvasH - 60) ndy = -ndy;
-        nx = Math.max(40, Math.min(canvasW - 60, nx));
-        ny = Math.max(40, Math.min(canvasH - 60, ny));
-        if (Math.random() > 0.98) { ndx = (Math.random() - 0.5) * 2; ndy = (Math.random() - 0.5) * 1.5; setFacing(ndx > 0 ? 1 : -1); }
-        if (Math.random() > 0.97) { setPaused(true); setPt(12 + Math.floor(Math.random() * 20)); }
-        setDir({ dx: ndx, dy: ndy });
-        return { x: nx, y: ny };
-      });
-    }, 100);
-    return () => clearInterval(iv);
-  }, [dir, paused, canvasW, canvasH]);
+function Boss({ canvasW, canvasH, orbit }) {
+  const tick = useTicker(100);
+  const centerX = canvasW * orbit.centerX;
+  const centerY = canvasH * orbit.centerY;
+  const amplitudeX = canvasW * orbit.amplitudeX;
+  const amplitudeY = canvasH * orbit.amplitudeY;
+  const horizontalAngle = tick / orbit.horizontalDivisor;
+  const verticalAngle = tick / orbit.verticalDivisor + Math.PI / 3;
+  const left = clamp(centerX + Math.sin(horizontalAngle) * amplitudeX, 40, canvasW - 60);
+  const top = clamp(centerY + Math.cos(verticalAngle) * amplitudeY, 40, canvasH - 60);
+  const previousLeft = clamp(
+    centerX + Math.sin((tick - 1) / orbit.horizontalDivisor) * amplitudeX,
+    40,
+    canvasW - 60,
+  );
+  const facing = left >= previousLeft ? 1 : -1;
+  const paused = Math.abs(Math.sin(horizontalAngle * 0.5)) > 0.95;
+  const frame = paused ? 0 : tick % 2;
 
   return (
-    <div className="absolute z-30 pointer-events-none" style={{ left: pos.x, top: pos.y, transform: `scaleX(${facing})`, transition: "left 100ms linear, top 100ms linear" }}>
+    <div className="absolute z-30 pointer-events-none" style={{ left, top, transform: `scaleX(${facing})`, transition: "left 100ms linear, top 100ms linear" }}>
       <Px sp={frame ? SP_BOSS2 : SP_BOSS1} pal={BOSS_PAL} p={3} />
       <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap" style={{ transform: `scaleX(${facing})` }}>
         <span className="font-mono text-[6px] text-amber-400/60 tracking-wider font-bold">MR. MILCHICK</span>
@@ -215,108 +234,122 @@ function Boss({ canvasW, canvasH }) {
 }
 
 // ── Cubicle (single desk + worker) ──────────────────────────────
-function Cub({ agent, pi, hov, onE, onL, facing = "down" }) {
-  const [f, sF] = useState(0);
-  useEffect(() => {
-    if (agent.status !== "running") return;
-    const iv = setInterval(() => sF((v) => (v + 1) % 2), 400);
-    return () => clearInterval(iv);
-  }, [agent.status]);
-
-  const pal = PALS[pi % PALS.length];
+function Cub({ agent, palIndex, hov, isSelected, onHover, onUnhover, onSelect, facing = "down" }) {
+  const tick = useTicker(400);
+  const pal = PALS[palIndex % PALS.length];
   const glow = agent.status === "running" ? "rgba(0,229,155,0.35)" : "transparent";
   const scr = agent.status === "running" ? "#0a2a1a" : "#0f0f0f";
-  const sp = agent.status === "running" ? (f ? SP_TYPE2 : SP_TYPE1) : SP_RELAX;
-
-  // Rotation for different facing directions
+  const sp = agent.status === "running" ? (tick % 2 ? SP_TYPE2 : SP_TYPE1) : SP_RELAX;
   const rot = facing === "up" ? 180 : facing === "left" ? 90 : facing === "right" ? -90 : 0;
+  const shellTone = isSelected
+    ? "rgba(16,185,129,0.18)"
+    : hov
+      ? "rgba(39,39,42,0.5)"
+      : "rgba(24,24,27,0.3)";
 
   return (
-    <div
-      className={`relative cursor-pointer ${hov ? "z-20" : ""}`}
-      onMouseEnter={onE} onMouseLeave={onL}
+    <button
+      type="button"
+      aria-pressed={isSelected}
+      aria-label={`Select ${agent.name} on Severance floor`}
+      className={`relative text-left outline-none ${hov || isSelected ? "z-20" : ""}`}
+      onClick={onSelect}
+      onMouseEnter={onHover}
+      onMouseLeave={onUnhover}
+      onFocus={onHover}
+      onBlur={onUnhover}
       style={{ width: 72, height: 80, transform: `rotate(${rot}deg)` }}
     >
-      {/* Cubicle partition walls — 3-sided */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-0 right-0" style={{ height: 4, background: "#52525b", borderRadius: 1 }} />
-        <div className="absolute top-0 left-0 bottom-0" style={{ width: 4, background: "#52525b", borderRadius: 1 }} />
-        <div className="absolute top-0 right-0 bottom-0" style={{ width: 4, background: "#52525b", borderRadius: 1 }} />
+        <div className="absolute top-0 left-0 right-0" style={{ height: 4, background: isSelected ? "#10b981" : "#52525b", borderRadius: 1 }} />
+        <div className="absolute top-0 left-0 bottom-0" style={{ width: 4, background: isSelected ? "#10b981" : "#52525b", borderRadius: 1 }} />
+        <div className="absolute top-0 right-0 bottom-0" style={{ width: 4, background: isSelected ? "#10b981" : "#52525b", borderRadius: 1 }} />
       </div>
-      <div className="absolute" style={{ top: 4, left: 4, right: 4, bottom: 0, background: hov ? "rgba(39,39,42,0.5)" : "rgba(24,24,27,0.3)" }} />
+      <div className="absolute" style={{ top: 4, left: 4, right: 4, bottom: 0, background: shellTone }} />
 
-      {/* Status glow */}
       {agent.status === "running" && <div className="absolute top-1 left-1/2 -translate-x-1/2 flex gap-0.5 z-10"><div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" /><div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" style={{ animationDelay: "0.3s" }} /></div>}
 
-      {/* Desk */}
-      <div className="absolute left-1/2 -translate-x-1/2 rounded-sm border" style={{ top: 10, width: 40, height: 14, background: "linear-gradient(180deg,#3f3f46,#27272a)", borderColor: "#27272a" }}>
+      <div className="absolute left-1/2 -translate-x-1/2 rounded-sm border" style={{ top: 10, width: 40, height: 14, background: "linear-gradient(180deg,#3f3f46,#27272a)", borderColor: isSelected ? "#10b981" : "#27272a" }}>
         <div className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-sm border border-zinc-600" style={{ width: 12, height: 8, background: scr, boxShadow: `0 0 5px ${glow}` }}>
           {agent.status === "running" && <div className="p-px space-y-px"><div className="h-px bg-emerald-500/60 rounded" style={{ width: "65%" }} /><div className="h-px bg-emerald-500/40 rounded" style={{ width: "45%" }} /></div>}
         </div>
         <div className="absolute bottom-0.5 left-1/2 -translate-x-1/2" style={{ width: 8, height: 2, background: "#18181b" }} />
       </div>
 
-      {/* Character — counter-rotate so sprite is always upright */}
       <div className="absolute left-1/2 -translate-x-1/2" style={{ top: 24, transform: `rotate(${-rot}deg)` }}>
         <Px sp={sp} pal={pal} p={2} />
       </div>
 
-      {/* Name — counter-rotate */}
       <div className="absolute bottom-1 left-0 right-0 text-center" style={{ transform: `rotate(${-rot}deg)` }}>
-        <div className="text-[5px] font-mono font-bold text-zinc-500 truncate px-0.5">{agent.name}</div>
+        <div className={`text-[5px] font-mono font-bold truncate px-0.5 ${isSelected ? "text-emerald-300" : "text-zinc-500"}`}>{agent.name}</div>
       </div>
 
-      {/* Progress */}
       {agent.status === "running" && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 h-[2px] rounded-full bg-zinc-800 overflow-hidden" style={{ width: 32, transform: `rotate(${-rot}deg)` }}>
           <div className="h-full rounded-full bg-emerald-400" style={{ width: `${agent.progress}%` }} />
         </div>
       )}
-    </div>
+    </button>
   );
 }
 
 // ── Cubicle Cluster — arranges desks in 2x2, 2x3, etc facing inward ──
-function CubCluster({ agents, pi, hId, onH, onUH }) {
+function CubCluster({ agents, paletteOffset, hoveredAgentId, onHoverAgent, onLeaveAgent, onSelectAgent }) {
   const n = agents.length;
-  // Determine cluster layout: pairs of rows facing each other
-  // 1-2 agents: 1x2 (or 1x1) facing each other
-  // 3-4 agents: 2x2 cluster
-  // 5-6 agents: 2x3 cluster
-  // 7+ agents: 4x2 cluster (two rows of 4 facing each other)
-  let rows, cols;
-  if (n <= 2) { rows = 1; cols = 2; }
-  else if (n <= 4) { rows = 2; cols = 2; }
-  else if (n <= 6) { rows = 2; cols = 3; }
-  else { rows = 2; cols = Math.min(4, Math.ceil(n / 2)); }
+  let rows;
+  let cols;
+  if (n <= 2) {
+    rows = 1;
+    cols = 2;
+  } else if (n <= 4) {
+    rows = 2;
+    cols = 2;
+  } else if (n <= 6) {
+    rows = 2;
+    cols = 3;
+  } else {
+    rows = 2;
+    cols = Math.min(4, Math.ceil(n / 2));
+  }
 
-  // Total cluster width/height — desks are 72x80, gap=4
-  const dW = 72, dH = 80, gap = 4;
+  const dW = 72;
+  const dH = 80;
+  const gap = 4;
   const clusterW = cols * (dW + gap);
-  const clusterH = rows * (dH + gap) + 8; // 8px for center aisle
-
-  // Arrange: top row faces down, bottom row faces up
+  const clusterH = rows * (dH + gap) + 8;
   const slots = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
+
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
       const idx = r * cols + c;
       if (idx >= n) continue;
-      const facing = r === 0 ? "down" : "up";
-      const x = c * (dW + gap);
-      const y = r === 0 ? 0 : dH + gap + 8;
-      slots.push({ agent: agents[idx], x, y, facing, pi: pi + idx });
+      slots.push({
+        agent: agents[idx],
+        x: c * (dW + gap),
+        y: r === 0 ? 0 : dH + gap + 8,
+        facing: r === 0 ? "down" : "up",
+        palIndex: paletteOffset + idx,
+      });
     }
   }
 
   return (
     <div className="relative" style={{ width: clusterW, height: clusterH }}>
-      {/* Center aisle divider between facing rows */}
       {rows >= 2 && (
         <div className="absolute" style={{ top: dH + gap, left: 0, right: 0, height: 8, background: "rgba(63,63,70,0.1)" }} />
       )}
-      {slots.map((s) => (
-        <div key={s.agent.id} className="absolute" style={{ left: s.x, top: s.y }}>
-          <Cub agent={s.agent} pi={s.pi} hov={hId === s.agent.id} onE={(e) => onH(s.agent.id, e)} onL={onUH} facing={s.facing} />
+      {slots.map((slot) => (
+        <div key={slot.agent.id} className="absolute" style={{ left: slot.x, top: slot.y }}>
+          <Cub
+            agent={slot.agent}
+            palIndex={slot.palIndex}
+            hov={hoveredAgentId === slot.agent.id}
+            isSelected={slot.agent.isSelected}
+            onHover={(event) => onHoverAgent(slot.agent.id, event)}
+            onUnhover={onLeaveAgent}
+            onSelect={() => onSelectAgent(slot.agent.id)}
+            facing={slot.facing}
+          />
         </div>
       ))}
     </div>
@@ -326,7 +359,6 @@ function CubCluster({ agents, pi, hId, onH, onUH }) {
 // ── Empty Desk Cluster (for away agents) ────────────────────────
 function EmptyDeskCluster({ agents }) {
   if (agents.length === 0) return null;
-  const cols = Math.min(agents.length, 3);
   return (
     <div className="flex flex-wrap gap-1 mt-1" style={{ opacity: 0.25 }}>
       {agents.map((a) => (
@@ -345,31 +377,45 @@ function EmptyDeskCluster({ agents }) {
 }
 
 // ── DeptRoom — irregular-shaped department ───────────────────────
-function Dept({ project, agents, x, y, w, h, po, hId, onH, onUH }) {
-  const sc = agents.some((a) => a.status === "running") ? "#00e59b"
-    : agents.every((a) => a.status === "complete") ? "#3fb950" : "#52525b";
-  // Only running agents sit at desks (failed go to break room)
-  const deskAgents = agents.filter((a) => a.status === "running");
-  const awayAgents = agents.filter((a) => a.status !== "running" && a.status !== "failed");
+function Dept({ department, hoveredAgentId, onHoverAgent, onLeaveAgent, onSelectAgent, onSelectProject }) {
+  const sc = department.status === "running"
+    ? "#00e59b"
+    : department.status === "complete"
+      ? "#3fb950"
+      : department.status === "failed"
+        ? "#f85149"
+        : "#52525b";
+  const deskAgents = department.agents.filter((agent) => agent.status === "running");
+  const awayAgents = department.agents.filter((agent) => agent.location === "amenity");
 
   return (
-    <div className="absolute" style={{ left: x, top: y, width: w, height: h }}>
-      {/* Room fill */}
-      <div className="absolute inset-0 rounded" style={{ background: "rgba(9,9,11,0.7)", border: "2px solid rgba(63,63,70,0.4)" }} />
-      {/* Fluorescent light strip */}
+    <div className="absolute" style={{ left: department.room.x, top: department.room.y, width: department.room.w, height: department.room.h }}>
+      <div className="absolute inset-0 rounded" style={{ background: department.isSelected ? "rgba(6,95,70,0.22)" : "rgba(9,9,11,0.7)", border: department.isSelected ? "2px solid rgba(16,185,129,0.55)" : "2px solid rgba(63,63,70,0.4)" }} />
       <div className="absolute h-px" style={{ top: 6, left: 20, right: 20, background: "rgba(34,211,238,0.18)", boxShadow: "0 0 10px rgba(34,211,238,0.1)", animation: "flicker 6s ease-in-out infinite" }} />
-      {/* Door */}
       <div className="absolute bottom-[-2px] left-1/2 -translate-x-1/2" style={{ width: 24, height: 4, background: "#09090b", borderRadius: "0 0 2px 2px" }} />
-      {/* Department label */}
-      <div className="absolute -top-5 left-2 flex items-center gap-1.5">
+      <div className="absolute -top-6 left-2 flex items-center gap-1.5">
         <div className="w-2 h-2 rounded-full" style={{ background: sc, boxShadow: `0 0 5px ${sc}80` }} />
-        <span className="font-mono text-[8px] font-bold text-zinc-300 tracking-[0.12em] uppercase">{project}</span>
-        <span className="font-mono text-[6px] text-zinc-600 ml-1">{agents.length} agents</span>
+        <button
+          type="button"
+          aria-pressed={department.isSelected}
+          aria-label={`Select ${department.name} department`}
+          className={`font-mono text-[8px] font-bold tracking-[0.12em] uppercase transition-colors ${department.isSelected ? "text-emerald-300" : "text-zinc-300 hover:text-zinc-100"}`}
+          onClick={() => onSelectProject(department.id)}
+        >
+          {department.name}
+        </button>
+        <span className="font-mono text-[6px] text-zinc-600 ml-1">{department.agentCount} agents</span>
       </div>
-      {/* Cubicle cluster */}
       <div className="absolute" style={{ top: 16, left: 14 }}>
         {deskAgents.length > 0 && (
-          <CubCluster agents={deskAgents} pi={po} hId={hId} onH={onH} onUH={onUH} />
+          <CubCluster
+            agents={deskAgents}
+            paletteOffset={department.paletteOffset}
+            hoveredAgentId={hoveredAgentId}
+            onHoverAgent={onHoverAgent}
+            onLeaveAgent={onLeaveAgent}
+            onSelectAgent={onSelectAgent}
+          />
         )}
         <EmptyDeskCluster agents={awayAgents} />
       </div>
@@ -380,16 +426,9 @@ function Dept({ project, agents, x, y, w, h, po, hId, onH, onUH }) {
 // ── Break Room (Punishment room — dark, narrow, ominous) ────────
 function BreakRoom({ failedAgents, x, y, w, h }) {
   const [statementIdx, setStatementIdx] = useState(0);
-  const statements = [
-    "I WILL NOT CAUSE ERRORS IN PRODUCTION",
-    "I WILL NOT DEVIATE FROM THE PROCESS",
-    "I CAUSED AN ERROR AND I ACCEPT MY FAULT",
-    "MY ACTIONS HAVE CONSEQUENCES FOR THE TEAM",
-    "I WILL EXECUTE MY TASKS WITHOUT FAILURE",
-  ];
 
   useEffect(() => {
-    const iv = setInterval(() => setStatementIdx((i) => (i + 1) % statements.length), 3000);
+    const iv = setInterval(() => setStatementIdx((i) => (i + 1) % BREAK_ROOM_STATEMENTS.length), 3000);
     return () => clearInterval(iv);
   }, []);
 
@@ -421,7 +460,7 @@ function BreakRoom({ failedAgents, x, y, w, h }) {
       <div className="absolute" style={{ top: 10, left: 10, right: 10, padding: "3px 6px", background: "rgba(40,10,10,0.6)", border: "1px solid #3a1a1a", borderRadius: 2 }}>
         <div className="font-mono text-[4px] text-red-900/50 tracking-wider mb-0.5">PLEASE READ THE FOLLOWING STATEMENT:</div>
         <div className="font-mono text-[6px] text-red-400/70 tracking-wider font-bold leading-tight animate-pulse">
-          {statements[statementIdx]}
+          {BREAK_ROOM_STATEMENTS[statementIdx]}
         </div>
       </div>
 
@@ -431,7 +470,7 @@ function BreakRoom({ failedAgents, x, y, w, h }) {
       {/* Failed agents seated at table */}
       <div className="absolute flex gap-2 left-1/2 -translate-x-1/2" style={{ top: 50 }}>
         {failedAgents.map((a, i) => (
-          <BreakRoomAgent key={a.id} agent={a} palIdx={i + 3} seatIndex={i} />
+          <BreakRoomAgent key={a.id} agent={a} palIdx={i + 3} />
         ))}
       </div>
 
@@ -450,66 +489,21 @@ function BreakRoom({ failedAgents, x, y, w, h }) {
 }
 
 // ── Maze Layout Engine ──────────────────────────────────────────
-// Positions departments irregularly like a maze/floor plan
-// Also places amenity rooms (cafeteria, break room, vending) among departments
-function layoutMaze(departments) {
-  const placed = [];
-
-  // Pre-defined irregular positions — like an actual office building floor plan
-  // Not aligned to grid, staggered, some areas denser, some sparser
-  // Amenity rooms are slotted in between departments
-  const positions = [
-    // Cluster A — upper left area
-    { x: 80, y: 100 },
-    { x: 440, y: 80 },
-    { x: 820, y: 130 },
-    // Cluster B — middle-left, shifted down and right
-    { x: 180, y: 400 },
-    { x: 580, y: 360 },
-    { x: 980, y: 320 },
-    // Cluster C — lower section, offset
-    { x: 60, y: 680 },
-    { x: 460, y: 640 },
-    { x: 860, y: 700 },
-    // Cluster D — further down, irregular spacing
-    { x: 300, y: 940 },
-    { x: 720, y: 900 },
-    { x: 1100, y: 960 },
-    // Cluster E — deep section
-    { x: 120, y: 1200 },
-    { x: 540, y: 1160 },
-    { x: 920, y: 1220 },
-    // Overflow
-    { x: 320, y: 1460 },
-    { x: 740, y: 1420 },
-    { x: 1140, y: 1480 },
-    { x: 180, y: 1700 },
-    { x: 600, y: 1660 },
-  ];
-
-  // Amenity room positions — scattered among the departments, not at the bottom
-  // These are fixed positions mixed into the floor
-  const AMENITY_POSITIONS = {
-    cafeteria:  { x: 1220, y: 140, rW: 300, rH: 160 },
-    breakroom:  { x: 1240, y: 680, rW: 260, rH: 150 },
-    vending:    { x: 1200, y: 440, rW: 180, rH: 130 },
+function layoutMaze(departments, amenityRooms) {
+  return {
+    departments: departments.map((department) => ({
+      ...department,
+      x: department.room.x,
+      y: department.room.y,
+      rW: department.room.w,
+      rH: department.room.h,
+    })),
+    amenityPositions: {
+      cafeteria: { x: amenityRooms.cafeteria.x, y: amenityRooms.cafeteria.y, rW: amenityRooms.cafeteria.w, rH: amenityRooms.cafeteria.h },
+      breakroom: { x: amenityRooms.breakroom.x, y: amenityRooms.breakroom.y, rW: amenityRooms.breakroom.w, rH: amenityRooms.breakroom.h },
+      vending: { x: amenityRooms.vending.x, y: amenityRooms.vending.y, rW: amenityRooms.vending.w, rH: amenityRooms.vending.h },
+    },
   };
-
-  departments.forEach((dept, i) => {
-    const pos = positions[i % positions.length];
-    const yOff = Math.floor(i / positions.length) * 1800;
-    const agents = dept.agents;
-    const deskCount = agents.filter((a) => a.status === "running").length;
-    // Room size based on agent count
-    const cols = Math.min(Math.max(deskCount, 1), 4);
-    const rows = Math.max(1, Math.ceil(deskCount / Math.max(cols, 1)));
-    const rW = Math.max(cols * 76 + 40, 200);
-    const rH = Math.max(rows * 90 + 60, 140);
-
-    placed.push({ ...dept, x: pos.x, y: pos.y + yOff, rW, rH });
-  });
-
-  return { departments: placed, amenityPositions: AMENITY_POSITIONS };
 }
 
 // ── Corridor SVG — thick visible maze hallways ──────────────────
@@ -622,102 +616,139 @@ function AmenityRoom({ label, sublabel, x, y, w, h, items, color }) {
 }
 
 // ── Main Component ──────────────────────────────────────────────
-export default function SeveranceFloor({ agents = [] }) {
-  const [hId, setHId] = useState(null);
-  const [ttPos, setTtPos] = useState({ x: 0, y: 0 });
+export default function SeveranceFloor({
+  floor = {
+    layoutSeedLabel: "severance-floor-v1",
+    bossOrbit: { centerX: 0.58, centerY: 0.42, amplitudeX: 0.31, amplitudeY: 0.28, horizontalDivisor: 12, verticalDivisor: 19 },
+    summary: { departmentCount: 0, agentCount: 0, runningCount: 0, failedCount: 0, awayCount: 0 },
+    agents: [],
+    departments: [],
+    selectedProject: null,
+    selectedAgent: null,
+    failedAgents: [],
+    amenityAgents: [],
+    amenityRooms: {
+      cafeteria: { x: 1220, y: 140, w: 300, h: 160 },
+      vending: { x: 1200, y: 440, w: 180, h: 130 },
+      breakroom: { x: 1240, y: 680, w: 260, h: 150 },
+    },
+  },
+  onSelectAgent = () => {},
+  onSelectProject = () => {},
+}) {
+  const [hoveredAgentId, setHoveredAgentId] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [msgI, setMsgI] = useState(0);
-  const [time, setTime] = useState(new Date());
+  const [time, setTime] = useState(() => new Date());
   const [msgF, setMsgF] = useState(true);
   const containerRef = useRef(null);
 
-  const departments = useMemo(() => {
-    const m = new Map();
-    agents.forEach((a) => { const k = a.project || "?"; if (!m.has(k)) m.set(k, []); m.get(k).push(a); });
-    return Array.from(m.entries()).map(([project, agts]) => ({ project, agents: agts }));
-  }, [agents]);
-
-  // Separate failed agents for Break Room
-  const failedAgents = useMemo(() => agents.filter((a) => a.status === "failed"), [agents]);
-
-  const layout = useMemo(() => layoutMaze(departments), [departments]);
+  const layout = useMemo(
+    () => layoutMaze(floor.departments ?? [], floor.amenityRooms ?? {}),
+    [floor.departments, floor.amenityRooms],
+  );
   const laid = layout.departments;
   const amenityPos = layout.amenityPositions;
+  const failedAgents = floor.failedAgents ?? [];
 
-  // Break Room position — from layout engine, sized to fit failed agents
-  const breakRoomPos = useMemo(() => {
-    const base = amenityPos.breakroom;
-    const brW = Math.max(base.rW, failedAgents.length * 55 + 60);
-    return { x: base.x, y: base.y, w: brW, h: base.rH };
-  }, [amenityPos, failedAgents.length]);
+  const breakRoomPos = useMemo(
+    () => ({
+      x: amenityPos.breakroom.x,
+      y: amenityPos.breakroom.y,
+      w: amenityPos.breakroom.rW,
+      h: amenityPos.breakroom.rH,
+    }),
+    [amenityPos],
+  );
 
-  // Amenity positions — from layout engine (integrated into the floor)
-  const amenities = useMemo(() => ({
-    cafeteria: { x: amenityPos.cafeteria.x, y: amenityPos.cafeteria.y, w: amenityPos.cafeteria.rW, h: amenityPos.cafeteria.rH },
-    vending: { x: amenityPos.vending.x, y: amenityPos.vending.y, w: amenityPos.vending.rW, h: amenityPos.vending.rH },
-  }), [amenityPos]);
+  const amenities = useMemo(
+    () => ({
+      cafeteria: { x: amenityPos.cafeteria.x, y: amenityPos.cafeteria.y, w: amenityPos.cafeteria.rW, h: amenityPos.cafeteria.rH },
+      vending: { x: amenityPos.vending.x, y: amenityPos.vending.y, w: amenityPos.vending.rW, h: amenityPos.vending.rH },
+    }),
+    [amenityPos],
+  );
 
-  // Compute canvas size from ALL rooms (departments + amenities)
-  const cs = useMemo(() => {
-    let mx = 1400, my = 900;
-    laid.forEach((d) => {
-      mx = Math.max(mx, d.x + d.rW + 200);
-      my = Math.max(my, d.y + d.rH + 200);
+  const canvasSize = useMemo(() => {
+    let maxX = 1400;
+    let maxY = 900;
+
+    laid.forEach((department) => {
+      maxX = Math.max(maxX, department.x + department.rW + 200);
+      maxY = Math.max(maxY, department.y + department.rH + 200);
     });
-    // Include amenity rooms
-    [amenities.cafeteria, amenities.vending, breakRoomPos].forEach((r) => {
-      mx = Math.max(mx, r.x + r.w + 200);
-      my = Math.max(my, r.y + r.h + 200);
-    });
-    return { w: mx, h: my };
-  }, [laid, amenities, breakRoomPos]);
 
-  // Build allRooms list for corridor routing (departments + amenities)
+    [amenities.cafeteria, amenities.vending, breakRoomPos].forEach((room) => {
+      maxX = Math.max(maxX, room.x + room.w + 200);
+      maxY = Math.max(maxY, room.y + room.h + 200);
+    });
+
+    return { w: maxX, h: maxY };
+  }, [amenities, breakRoomPos, laid]);
+
   const allRooms = useMemo(() => {
-    const rooms = laid.map((d) => ({ x: d.x, y: d.y, rW: d.rW, rH: d.rH }));
-    // Insert amenity rooms at strategic positions so corridors connect to them
+    const rooms = laid.map((department) => ({ x: department.x, y: department.y, rW: department.rW, rH: department.rH }));
     rooms.splice(3, 0, { x: amenities.cafeteria.x, y: amenities.cafeteria.y, rW: amenities.cafeteria.w, rH: amenities.cafeteria.h });
     rooms.splice(7, 0, { x: amenities.vending.x, y: amenities.vending.y, rW: amenities.vending.w, rH: amenities.vending.h });
     rooms.splice(10, 0, { x: breakRoomPos.x, y: breakRoomPos.y, rW: breakRoomPos.w, rH: breakRoomPos.h });
     return rooms;
-  }, [laid, amenities, breakRoomPos]);
+  }, [amenities, breakRoomPos, laid]);
 
-  // Wandering agents — idle/queued/complete walk to cafeteria or vending
-  const wanderers = useMemo(() => {
-    const areas = [amenities.cafeteria, amenities.vending];
-    return agents
-      .filter((a) => a.status === "queued" || a.status === "complete")
-      .map((a, i) => {
-        const area = areas[i % areas.length];
-        return { agent: a, target: { x: area.x + 20 + Math.random() * (area.w - 60), y: area.y + 30 + Math.random() * (area.h - 60) }, palIdx: i };
-      });
-  }, [agents, amenities]);
+  const wanderers = useMemo(
+    () =>
+      (floor.amenityAgents ?? []).map((agent, index) => ({
+        agent,
+        room: amenities[agent.amenityRoomId] ?? amenities.cafeteria,
+        palIdx: agent.paletteIndex ?? index,
+      })),
+    [amenities, floor.amenityAgents],
+  );
 
   const { transform, onMouseDown, onMouseMove, onMouseUp } = usePanZoom(containerRef);
 
   useEffect(() => {
-    const iv = setInterval(() => { setMsgF(false); setTimeout(() => { setMsgI((i) => (i + 1) % MSGS.length); setMsgF(true); }, 400); }, 5000);
-    return () => clearInterval(iv);
-  }, []);
-  useEffect(() => { const iv = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(iv); }, []);
+    const intervalId = window.setInterval(() => {
+      setMsgF(false);
+      window.setTimeout(() => {
+        setMsgI((current) => (current + 1) % MSGS.length);
+        setMsgF(true);
+      }, 400);
+    }, 5000);
 
-  const handleH = useCallback((id, e) => {
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setTime(new Date()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  const handleHoverAgent = useCallback((agentId, event) => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (rect) setTtPos({ x: (e.clientX - rect.left - transform.x) / transform.scale, y: (e.clientY - rect.top - transform.y) / transform.scale });
-    setHId(id);
+    if (rect && typeof event?.clientX === "number" && typeof event?.clientY === "number") {
+      setTooltipPos({
+        x: (event.clientX - rect.left - transform.x) / transform.scale,
+        y: (event.clientY - rect.top - transform.y) / transform.scale,
+      });
+    }
+    setHoveredAgentId(agentId);
   }, [transform]);
 
-  const hAgent = agents.find((a) => a.id === hId);
-  let po = 0;
+  const handleLeaveAgent = useCallback(() => setHoveredAgentId(null), []);
+  const handleSelectAgent = useCallback((agentId) => {
+    setHoveredAgentId(agentId);
+    onSelectAgent(agentId);
+  }, [onSelectAgent]);
+
+  const hoveredAgent = (floor.agents ?? []).find((agent) => agent.id === hoveredAgentId) ?? null;
 
   return (
     <div className="relative w-full h-full bg-zinc-950 font-mono select-none flex flex-col overflow-hidden">
       <style>{`
         @keyframes flicker{0%,100%{opacity:.9}5%{opacity:.85}50%{opacity:.88}55%{opacity:.95}}
         @keyframes dust{0%,100%{transform:translateY(0) translateX(0);opacity:.1}33%{transform:translateY(-10px) translateX(4px);opacity:.22}66%{transform:translateY(-5px) translateX(-3px);opacity:.13}}
-        @keyframes redpulse{0%,100%{opacity:.3}50%{opacity:.6}}
       `}</style>
 
-      {/* Top bar */}
       <div className="flex-shrink-0 z-40" style={{ background: "rgba(9,9,11,0.92)" }}>
         <div className="flex items-center justify-between px-5 py-2 border-b border-zinc-800/60">
           <div className="flex items-center gap-3">
@@ -727,7 +758,7 @@ export default function SeveranceFloor({ agents = [] }) {
             </div>
             <div>
               <div className="font-mono text-[10px] font-bold text-zinc-300 tracking-[0.15em]">SEVERED FLOOR</div>
-              <div className="font-mono text-[7px] text-zinc-600 tracking-wider">MACRODATA REFINEMENT · {departments.length} DEPTS · {agents.length} AGENTS</div>
+              <div className="font-mono text-[7px] text-zinc-600 tracking-wider">MACRODATA REFINEMENT · {floor.summary.departmentCount} DEPTS · {floor.summary.agentCount} AGENTS</div>
             </div>
           </div>
           <div className="transition-opacity duration-400 max-w-lg text-center" style={{ opacity: msgF ? 1 : 0 }}>
@@ -735,9 +766,9 @@ export default function SeveranceFloor({ agents = [] }) {
           </div>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="font-mono text-[8px] text-zinc-500">{agents.filter((a) => a.status === "running").length} RUN</span></div>
-              <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /><span className="font-mono text-[8px] text-red-400">{failedAgents.length} BREAK ROOM</span></div>
-              <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-zinc-500" /><span className="font-mono text-[8px] text-zinc-600">{agents.filter((a) => a.status === "queued" || a.status === "complete").length} IDLE</span></div>
+              <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="font-mono text-[8px] text-zinc-500">{floor.summary.runningCount} RUN</span></div>
+              <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /><span className="font-mono text-[8px] text-red-400"><span data-testid="severance-floor-break-room-count">{floor.summary.failedCount}</span> BREAK ROOM</span></div>
+              <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-zinc-500" /><span className="font-mono text-[8px] text-zinc-600">{floor.summary.awayCount} IDLE</span></div>
             </div>
             <div className="bg-zinc-900 border border-zinc-800 px-2 py-1 rounded" style={{ animation: "flicker 8s ease-in-out infinite" }}>
               <span className="font-mono text-[10px] text-emerald-400 font-bold tabular-nums tracking-widest">{time.toLocaleTimeString("en-US", { hour12: false })}</span>
@@ -745,9 +776,27 @@ export default function SeveranceFloor({ agents = [] }) {
             <div className="font-mono text-[8px] text-zinc-600">{Math.round(transform.scale * 100)}%</div>
           </div>
         </div>
+        <div className="grid gap-2 border-b border-zinc-900/80 bg-zinc-950/80 px-5 py-2 lg:grid-cols-3">
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+            <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-600">Selected project</div>
+            <div className="mt-1 text-[11px] font-bold text-zinc-200" data-testid="severance-floor-selected-project">{floor.selectedProject?.name ?? "No project selected"}</div>
+            <div className="mt-1 text-[9px] text-zinc-500">{floor.selectedProject ? `${floor.selectedProject.phaseLabel} · ${floor.selectedProject.waveLabel}` : "Pick a department from the dashboard or floor."}</div>
+            <div className="mt-1 text-[8px] uppercase tracking-[0.12em] text-zinc-600" data-testid="severance-floor-selected-project-status">{floor.selectedProject ? formatFloorStatus(floor.selectedProject.status) : "UNSELECTED"}</div>
+          </div>
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+            <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-600">Selected agent</div>
+            <div className="mt-1 text-[11px] font-bold text-zinc-200" data-testid="severance-floor-selected-agent">{floor.selectedAgent?.name ?? "No agent selected"}</div>
+            <div className="mt-1 text-[9px] text-zinc-500">{floor.selectedAgent ? `${floor.selectedAgent.modelLabel} · ${floor.selectedAgent.projectName}` : "Select a cubicle on the floor or dashboard."}</div>
+            <div className="mt-1 text-[8px] uppercase tracking-[0.12em] text-zinc-600" data-testid="severance-floor-selected-agent-status">{floor.selectedAgent ? formatFloorStatus(floor.selectedAgent.status) : "UNSELECTED"}</div>
+          </div>
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+            <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-600">Layout seed</div>
+            <div className="mt-1 text-[11px] font-bold text-emerald-300">{floor.layoutSeedLabel}</div>
+            <div className="mt-1 text-[9px] text-zinc-500">Stable room anchors and deterministic amenity motion keyed by canonical agent/project identity.</div>
+          </div>
+        </div>
       </div>
 
-      {/* Canvas — pan/zoom container */}
       <div
         ref={containerRef}
         className="flex-1 overflow-hidden relative cursor-grab active:cursor-grabbing"
@@ -761,49 +810,50 @@ export default function SeveranceFloor({ agents = [] }) {
           style={{
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
             transformOrigin: "0 0",
-            width: cs.w,
-            height: cs.h,
+            width: canvasSize.w,
+            height: canvasSize.h,
             position: "absolute",
             backgroundImage: "linear-gradient(rgba(39,39,42,0.07) 1px,transparent 1px),linear-gradient(90deg,rgba(39,39,42,0.07) 1px,transparent 1px)",
             backgroundSize: "40px 40px",
           }}
         >
-          {/* Scanlines */}
           <div className="absolute inset-0 pointer-events-none z-[45] opacity-[0.02]" style={{ background: "repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(255,255,255,0.08) 2px,rgba(255,255,255,0.08) 4px)" }} />
 
-          {/* Dust particles */}
-          {Array.from({ length: 20 }).map((_, i) => (
-            <div key={`d${i}`} className="absolute pointer-events-none rounded-full bg-zinc-400" style={{ width: 2, height: 2, left: 40 + (i * 73) % (cs.w - 80), top: 60 + (i * 97) % (cs.h - 120), animation: `dust ${5 + (i % 3) * 2}s ease-in-out infinite`, animationDelay: `${i * 0.5}s` }} />
+          {Array.from({ length: 20 }).map((_, index) => (
+            <div key={`dust-${index}`} className="absolute pointer-events-none rounded-full bg-zinc-400" style={{ width: 2, height: 2, left: 40 + (index * 73) % (canvasSize.w - 80), top: 60 + (index * 97) % (canvasSize.h - 120), animation: `dust ${5 + (index % 3) * 2}s ease-in-out infinite`, animationDelay: `${index * 0.5}s` }} />
           ))}
 
-          {/* Floor labels */}
           <div className="absolute font-mono text-[7px] text-zinc-800 tracking-[0.4em] pointer-events-none" style={{ left: 20, top: 30 }}>FLOOR PLAN — SUBLEVEL B</div>
           <div className="absolute font-mono text-[7px] text-zinc-800 tracking-[0.4em] pointer-events-none" style={{ right: 30, top: 30 }}>SCROLL TO ZOOM · CLICK + DRAG TO PAN</div>
 
-          {/* Corporate poster */}
-          <div className="absolute pointer-events-none border border-zinc-800/40 rounded-sm px-4 py-2" style={{ left: cs.w / 2 - 100, top: 20, width: 200, background: "rgba(24,24,27,0.5)", textAlign: "center" }}>
+          <div className="absolute pointer-events-none border border-zinc-800/40 rounded-sm px-4 py-2" style={{ left: canvasSize.w / 2 - 100, top: 20, width: 200, background: "rgba(24,24,27,0.5)", textAlign: "center" }}>
             <div className="font-mono text-[6px] text-zinc-600 tracking-[0.15em] mb-0.5">LUMON INDUSTRIES</div>
             <div className="font-mono text-[7px] text-zinc-500 tracking-wider font-bold leading-tight">THE WORK IS<br />MYSTERIOUS AND IMPORTANT</div>
           </div>
 
-          {/* Maze corridors — connects departments + amenity rooms */}
-          <MazeCorridors allRooms={allRooms} canvasW={cs.w} canvasH={cs.h} />
+          <MazeCorridors allRooms={allRooms} canvasW={canvasSize.w} canvasH={canvasSize.h} />
 
-          {/* Department rooms */}
-          {laid.map((dept) => {
-            const off = po;
-            po += dept.agents.length;
-            return <Dept key={dept.project} project={dept.project} agents={dept.agents} x={dept.x} y={dept.y} w={dept.rW} h={dept.rH} po={off} hId={hId} onH={handleH} onUH={() => setHId(null)} />;
-          })}
+          {laid.map((department) => (
+            <Dept
+              key={department.id}
+              department={department}
+              hoveredAgentId={hoveredAgentId}
+              onHoverAgent={handleHoverAgent}
+              onLeaveAgent={handleLeaveAgent}
+              onSelectAgent={handleSelectAgent}
+              onSelectProject={onSelectProject}
+            />
+          ))}
 
-          {/* ── BREAK ROOM (punishment for failed agents) ── */}
           <BreakRoom failedAgents={failedAgents} x={breakRoomPos.x} y={breakRoomPos.y} w={breakRoomPos.w} h={breakRoomPos.h} />
 
-          {/* ── CAFETERIA ── */}
           <AmenityRoom
-            label="CAFETERIA" sublabel="LUMON DINING"
-            x={amenities.cafeteria.x} y={amenities.cafeteria.y}
-            w={amenities.cafeteria.w} h={amenities.cafeteria.h}
+            label="CAFETERIA"
+            sublabel="LUMON DINING"
+            x={amenities.cafeteria.x}
+            y={amenities.cafeteria.y}
+            w={amenities.cafeteria.w}
+            h={amenities.cafeteria.h}
             color="#f0a030"
             items={[
               { label: "Table", w: 40, h: 18, bg: "#2a2a20", bc: "#3a3a30" },
@@ -815,11 +865,13 @@ export default function SeveranceFloor({ agents = [] }) {
             ]}
           />
 
-          {/* ── VENDING MACHINES ── */}
           <AmenityRoom
-            label="VENDING" sublabel=""
-            x={amenities.vending.x} y={amenities.vending.y}
-            w={amenities.vending.w} h={amenities.vending.h}
+            label="VENDING"
+            sublabel=""
+            x={amenities.vending.x}
+            y={amenities.vending.y}
+            w={amenities.vending.w}
+            h={amenities.vending.h}
             color="#58a6ff"
             items={[
               { label: "Snacks", w: 28, h: 40, bg: "#1a2a3a", bc: "#2a3a4a" },
@@ -828,7 +880,6 @@ export default function SeveranceFloor({ agents = [] }) {
             ]}
           />
 
-          {/* Elevator area */}
           <div className="absolute pointer-events-none" style={{ right: 40, bottom: 40 }}>
             <div className="border border-zinc-800/40 rounded px-3 py-2 bg-zinc-900/30 text-center">
               <div className="font-mono text-[6px] text-zinc-700 tracking-[0.3em]">ELEVATOR</div>
@@ -840,36 +891,33 @@ export default function SeveranceFloor({ agents = [] }) {
             </div>
           </div>
 
-          {/* Boss roaming */}
-          <Boss canvasW={cs.w} canvasH={cs.h} />
+          <Boss canvasW={canvasSize.w} canvasH={canvasSize.h} orbit={floor.bossOrbit} />
 
-          {/* Wandering idle agents */}
-          {wanderers.map((w) => (
-            <WanderingAgent key={w.agent.id} agent={w.agent} palIdx={w.palIdx} target={w.target} />
+          {wanderers.map((wanderer) => (
+            <WanderingAgent key={wanderer.agent.id} agent={wanderer.agent} palIdx={wanderer.palIdx} room={wanderer.room} />
           ))}
 
-          {/* Tooltip */}
-          {hAgent && (
-            <div className="absolute z-[60] pointer-events-none" style={{ left: ttPos.x, top: ttPos.y - 10, transform: "translate(-50%,-100%)" }}>
+          {hoveredAgent && (
+            <div className="absolute z-[60] pointer-events-none" style={{ left: tooltipPos.x, top: tooltipPos.y - 10, transform: "translate(-50%,-100%)" }}>
               <Card className="bg-zinc-900/95 border-zinc-700 shadow-2xl shadow-black/50 backdrop-blur">
                 <CardContent className="p-2.5 space-y-1" style={{ minWidth: 170 }}>
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] font-bold text-zinc-200">{hAgent.name}</span>
+                    <span className="font-mono text-[10px] font-bold text-zinc-200">{hoveredAgent.name}</span>
                     <Badge variant="outline" className={`font-mono text-[7px] font-bold tracking-widest uppercase ${
-                      hAgent.status === "running" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                      hAgent.status === "complete" ? "bg-green-500/15 text-green-400 border-green-500/30" :
-                      hAgent.status === "failed" ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                      hoveredAgent.status === "running" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
+                      hoveredAgent.status === "complete" ? "bg-green-500/15 text-green-400 border-green-500/30" :
+                      hoveredAgent.status === "failed" ? "bg-red-500/15 text-red-400 border-red-500/30" :
                       "bg-zinc-500/15 text-zinc-400 border-zinc-500/30"
-                    }`}>{hAgent.status === "failed" ? "BREAK ROOM" : hAgent.status}</Badge>
+                    }`}>{formatFloorStatus(hoveredAgent.status)}</Badge>
                   </div>
-                  <div className="font-mono text-[8px] text-zinc-500">{hAgent.type === "claude" ? "Claude Code" : "Codex CLI"} · {hAgent.project}</div>
-                  <div className="font-mono text-[8px] text-zinc-400 leading-snug">{hAgent.task}</div>
-                  {hAgent.status === "running" && (
+                  <div className="font-mono text-[8px] text-zinc-500">{hoveredAgent.modelLabel} · {hoveredAgent.projectName}</div>
+                  <div className="font-mono text-[8px] text-zinc-400 leading-snug">{hoveredAgent.task}</div>
+                  {hoveredAgent.status === "running" && (
                     <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
-                      <div className="h-full rounded-full bg-emerald-400" style={{ width: `${hAgent.progress}%` }} />
+                      <div className="h-full rounded-full bg-emerald-400" style={{ width: `${hoveredAgent.progress}%` }} />
                     </div>
                   )}
-                  {hAgent.status === "failed" && (
+                  {hoveredAgent.status === "failed" && (
                     <div className="text-[7px] text-red-400/80 font-mono">Sent to Break Room — reading statement</div>
                   )}
                 </CardContent>
