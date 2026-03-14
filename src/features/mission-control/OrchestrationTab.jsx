@@ -24,6 +24,7 @@ import {
   GitBranch,
   Layers,
   Loader2,
+  Plus,
   Search,
   Timer,
   Workflow,
@@ -44,6 +45,7 @@ const STATUS_CLASSES = {
   complete: "bg-green-500/15 text-green-400 border-green-500/30",
   failed: "bg-red-500/15 text-red-400 border-red-500/30",
   queued: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+  idle: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
 };
 
 function StatusBadge({ status, className = "" }) {
@@ -220,7 +222,32 @@ const buildFlowGraph = (stages, selectedStageId) => {
   return { nodes, edges };
 };
 
-export default function OrchestrationTab() {
+function EmptyOrchestrationState({ onOpenNewProject }) {
+  return (
+    <Card className="bg-zinc-900/60 border-dashed border-zinc-700" data-testid="orchestration-empty-registry">
+      <CardContent className="p-5 space-y-4">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Workflow orchestration</div>
+          <div className="mt-2 font-mono text-sm font-bold text-zinc-200">No canonical project selected</div>
+          <div className="mt-2 max-w-2xl font-mono text-[11px] text-zinc-400 leading-relaxed">
+            The restored registry is intentionally empty, so the orchestration canvas has nothing to project yet. Spawn a project to seed a canonical pipeline and make reload state visible here.
+          </div>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onOpenNewProject}
+          className="w-fit font-mono text-[11px] font-semibold bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+        >
+          <Plus size={12} className="mr-2" />
+          Spawn new project
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function OrchestrationTab({ onOpenNewProject }) {
   const orchestration = useLumonSelector(selectOrchestrationInput);
   const { selectProject, selectStage } = useLumonActions();
   const detailStage = orchestration.selectedStage ?? orchestration.currentStage;
@@ -235,6 +262,34 @@ export default function OrchestrationTab() {
     setNodes(graph.nodes);
     setEdges(graph.edges);
   }, [graph.edges, graph.nodes, setEdges, setNodes]);
+
+  if (!orchestration.projectId) {
+    return (
+      <div className="p-4 h-full flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="font-mono text-sm font-bold text-zinc-200 tracking-[0.15em] uppercase">
+              Workflow orchestration
+            </h2>
+            <div className="mt-1 font-mono text-[11px] text-zinc-500">
+              React Flow is a local canvas adapter over shared Lumon state.
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={onOpenNewProject}
+            className="font-mono text-[11px] font-semibold bg-emerald-500 text-zinc-950 hover:bg-emerald-400"
+          >
+            <Plus size={12} className="mr-2" />
+            Spawn new project
+          </Button>
+        </div>
+
+        <EmptyOrchestrationState onOpenNewProject={onOpenNewProject} />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 h-full flex flex-col gap-3">
@@ -283,6 +338,9 @@ export default function OrchestrationTab() {
                 {orchestration.projectName} — {orchestration.phaseLabel}
               </span>
               <StatusBadge status={orchestration.status} />
+              <Badge className="bg-cyan-500/10 text-cyan-300 border-cyan-500/20 font-mono text-[9px] uppercase tracking-[0.08em]">
+                {orchestration.engineLabel}
+              </Badge>
             </div>
             <div className="mt-2 flex items-center justify-between gap-4">
               <div className="h-1.5 flex-1 rounded-full bg-zinc-800 overflow-hidden">

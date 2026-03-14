@@ -1054,12 +1054,20 @@ const buildProjectExecution = (project) => {
   };
 };
 
-const buildProject = (project) => ({
+const createSeedTimestamp = (projectIndex, minuteOffset = 0) =>
+  new Date(Date.UTC(2026, 0, 13, 16 + projectIndex, minuteOffset, 0)).toISOString();
+
+const inferSeedEngineChoice = (project) => project.agents[0]?.type ?? "claude";
+
+const buildProject = (project, projectIndex) => ({
   id: project.id,
   name: project.name,
   description: project.desc,
   phaseLabel: project.phase,
   phase: project.phase,
+  engineChoice: inferSeedEngineChoice(project),
+  createdAt: createSeedTimestamp(projectIndex),
+  updatedAt: createSeedTimestamp(projectIndex, 15),
   waves: project.waves,
   agents: project.agents.map((agent) => ({
     id: agent.id,
@@ -1081,7 +1089,7 @@ const buildProject = (project) => ({
   },
 });
 
-export const lumonProjectSeed = RAW_PROJECTS.map(buildProject);
+export const lumonProjectSeed = RAW_PROJECTS.map((project, projectIndex) => buildProject(project, projectIndex));
 export const lumonSeedSource = "mission-control-demo";
 export const lumonFloorLayoutSeed = Object.freeze({
   label: "severance-floor-v1",

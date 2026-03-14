@@ -53,7 +53,7 @@ This milestone is complete only when all are true:
 - [x] **S01: Core control-shell refactor** `risk:high` `depends:[]`
   > After this: the current prototype runs on a canonical Lumon app state and shared selectors instead of scattered mock-only view data.
 
-- [ ] **S02: Project registry and persistence** `risk:high` `depends:[S01]`
+- [x] **S02: Project registry and persistence** `risk:high` `depends:[S01]`
   > After this: the operator can create projects, choose Claude Code or Codex, and recover the same fleet after reload.
 
 - [ ] **S03: Pipeline board and approval model** `risk:medium` `depends:[S01,S02]`

@@ -18,7 +18,7 @@ const ARCHITECTURE_LAYERS = [
     points: [
       "Dashboard and orchestration surfaces read shared Lumon selectors.",
       "React Flow nodes and edges stay local to the orchestration module.",
-      "Transient UI state (modal intake queue, terminal playback) stays surface-owned.",
+      "Transient UI state (modal fields, terminal playback) stays surface-owned until canonical project creation dispatches.",
     ],
   },
   {
@@ -28,7 +28,7 @@ const ARCHITECTURE_LAYERS = [
     icon: Server,
     color: "text-emerald-400",
     points: [
-      "MissionControl mounts a Lumon provider seeded from canonical demo state.",
+      "MissionControl mounts a Lumon provider from explicit state, persisted registry restore, or demo seed fallback.",
       "Dashboard, orchestration, and floor tabs synchronize through one selection contract.",
       "Status transitions update agent records without freezing stage labels into the store.",
     ],
@@ -118,7 +118,7 @@ export default function ArchitectureTab() {
               {[
                 "Dashboard cards consume selector output instead of inline mock arrays.",
                 "Orchestration stages are adapter view models over canonical project/agent state.",
-                "Modal drafts and canvas gestures stay local so the provider does not absorb purely presentational concerns.",
+                "Modal form state and canvas gestures stay local so the provider only stores canonical registry data.",
               ].map((item) => (
                 <div key={item} className="rounded border border-zinc-800 bg-zinc-950/70 px-3 py-2 font-mono text-[11px] text-zinc-400">
                   {item}

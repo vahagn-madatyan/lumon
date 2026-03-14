@@ -4,6 +4,8 @@ const formatCurrency = (value) => `$${Number(value ?? 0).toFixed(2)}`;
 const formatTokenThousands = (value) => `${Math.round(Number(value ?? 0) / 1000)}k`;
 const FLOOR_AMENITY_ROOM_IDS = ["cafeteria", "vending"];
 
+const resolveEngineLabel = (engineChoice) => (engineChoice === "codex" ? "Codex CLI" : "Claude Code");
+
 const stableHash = (value) => {
   let hash = 2166136261;
   const input = String(value ?? "");
@@ -193,6 +195,8 @@ export const selectDashboardProjects = (state) =>
       name: project.name,
       description: project.description,
       phaseLabel: project.phaseLabel,
+      engineChoice: project.engineChoice,
+      engineLabel: resolveEngineLabel(project.engineChoice),
       waveLabel: `Wave ${project.waves.current}/${project.waves.total}`,
       status: selectProjectStatus(project),
       metrics,
@@ -225,6 +229,8 @@ export const selectSelectedProjectDetail = (state) => {
     name: project.name,
     description: project.description,
     phaseLabel: project.phaseLabel,
+    engineChoice: project.engineChoice,
+    engineLabel: resolveEngineLabel(project.engineChoice),
     waveLabel: `Wave ${project.waves.current}/${project.waves.total}`,
     status: selectProjectStatus(project),
     metrics,
@@ -363,6 +369,8 @@ export const selectOrchestrationInput = (state) => {
       id: project.id,
       label: project.name,
       phaseLabel: project.phaseLabel,
+      engineChoice: project.engineChoice,
+      engineLabel: resolveEngineLabel(project.engineChoice),
       status: hasFailure ? "failed" : isRunning ? "running" : selectProjectStatus(project),
       isSelected: project.id === selectedProject?.id,
       hasFailure,
@@ -376,6 +384,8 @@ export const selectOrchestrationInput = (state) => {
       projectId: null,
       projectName: null,
       phaseLabel: null,
+      engineChoice: null,
+      engineLabel: null,
       status: "idle",
       progressPercent: 0,
       completedCount: 0,
@@ -415,13 +425,15 @@ export const selectOrchestrationInput = (state) => {
   const totalCount = stages.length;
   const progressPercent = Math.round((completedCount / Math.max(totalCount, 1)) * 100);
   const status =
-    stages.some((stage) => stage.status === "failed")
-      ? "failed"
-      : stages.some((stage) => stage.status === "running")
-        ? "running"
-        : stages.every((stage) => stage.status === "complete")
-          ? "complete"
-          : "queued";
+    stages.length === 0
+      ? selectedProject.execution.status ?? selectProjectStatus(selectedProject)
+      : stages.some((stage) => stage.status === "failed")
+        ? "failed"
+        : stages.some((stage) => stage.status === "running")
+          ? "running"
+          : stages.every((stage) => stage.status === "complete")
+            ? "complete"
+            : "queued";
   const currentStage =
     stages.find((stage) => stage.id === selectedProject.execution.currentStageId) ??
     stages.find((stage) => stage.status === "failed" || stage.status === "running") ??
@@ -434,6 +446,8 @@ export const selectOrchestrationInput = (state) => {
     projectId: selectedProject.id,
     projectName: selectedProject.name,
     phaseLabel: selectedProject.phaseLabel,
+    engineChoice: selectedProject.engineChoice,
+    engineLabel: resolveEngineLabel(selectedProject.engineChoice),
     status,
     progressPercent,
     completedCount,

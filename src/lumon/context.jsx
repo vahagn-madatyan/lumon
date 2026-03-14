@@ -1,7 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useMemo, useReducer } from "react";
+import { createContext, useContext, useEffect, useMemo, useReducer } from "react";
 import { lumonActions, lumonReducer } from "./reducer";
 import { createSeedLumonState } from "./seed";
+import { lumonLocalPersistence } from "./persistence";
 
 const LumonStateContext = createContext(null);
 const LumonActionsContext = createContext(null);
@@ -29,22 +30,40 @@ const createStatusPatch = (agent, status, changes = {}) => {
   return baseChanges;
 };
 
-export function LumonProvider({ children, initialState }) {
-  const [state, dispatch] = useReducer(
-    lumonReducer,
-    initialState ?? null,
-    (seededState) => seededState ?? createSeedLumonState(),
+export function resolveLumonInitialState(initialState, persistence = lumonLocalPersistence) {
+  if (initialState) {
+    return initialState;
+  }
+
+  return persistence?.loadState?.() ?? createSeedLumonState();
+}
+
+export function LumonProvider({ children, initialState, persistence = lumonLocalPersistence }) {
+  const [state, dispatch] = useReducer(lumonReducer, initialState ?? null, (seededState) =>
+    resolveLumonInitialState(seededState, persistence),
   );
+
+  useEffect(() => {
+    if (!state) {
+      return;
+    }
+
+    persistence?.saveState?.(state);
+  }, [persistence, state]);
 
   const actions = useMemo(
     () => ({
       dispatch,
       hydrate: (payload) => dispatch(lumonActions.hydrate(payload)),
+      addProject: (project, options) => dispatch(lumonActions.addProject(project, options)),
+      updateProject: (projectId, changes, options) =>
+        dispatch(lumonActions.updateProject(projectId, changes, options)),
+      removeProject: (projectId) => dispatch(lumonActions.removeProject(projectId)),
       selectProject: (projectId) => dispatch(lumonActions.selectProject(projectId)),
       selectAgent: (agentId) => dispatch(lumonActions.selectAgent(agentId)),
       selectStage: (stageId) => dispatch(lumonActions.selectStage(stageId)),
-      updateAgent: (agentId, changes) => dispatch(lumonActions.updateAgent(agentId, changes)),
-      updateStage: (stageId, changes) => dispatch(lumonActions.updateStage(stageId, changes)),
+      updateAgent: (agentId, changes, options) => dispatch(lumonActions.updateAgent(agentId, changes, options)),
+      updateStage: (stageId, changes, options) => dispatch(lumonActions.updateStage(stageId, changes, options)),
       setAgentStatus: (agent, status, changes = {}) => {
         if (!agent?.id) {
           return;

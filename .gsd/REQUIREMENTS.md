@@ -14,17 +14,6 @@ Guidelines:
 
 ## Active
 
-### R002 — Multi-project registry and lifecycle tracking
-- Class: core-capability
-- Status: active
-- Description: The operator must be able to create, store, browse, and revisit multiple projects with clear lifecycle state.
-- Why it matters: Lumon is a fleet dashboard, not a single-project wizard.
-- Source: user
-- Primary owning slice: M001/S02
-- Supporting slices: M001/S06
-- Validation: mapped
-- Notes: M001 needs durable local persistence, even if later milestones replace the backing store.
-
 ### R003 — Stage-based intake pipeline from idea to build handoff
 - Class: primary-user-loop
 - Status: active
@@ -123,17 +112,6 @@ Guidelines:
 - Supporting slices: none
 - Validation: unmapped
 - Notes: External creation requires explicit confirmation.
-
-### R012 — Execution-engine selection per project
-- Class: core-capability
-- Status: active
-- Description: Each project must carry an explicit execution-engine choice between Claude Code and Codex.
-- Why it matters: Engine choice is part of the user-visible project identity and later execution behavior.
-- Source: user
-- Primary owning slice: M003 (provisional)
-- Supporting slices: M001/S02
-- Validation: mapped
-- Notes: M001 stores and displays the choice; M003 uses it for real handoff.
 
 ### R013 — GSD bootstrap and autonomous handoff
 - Class: integration
@@ -235,6 +213,28 @@ Guidelines:
 - Supporting slices: M001/S03, M001/S05, M001/S06
 - Validation: validated
 - Notes: Multi-operator support is intentionally deferred.
+
+### R002 — Multi-project registry and lifecycle tracking
+- Class: core-capability
+- Status: validated
+- Description: The operator must be able to create, store, browse, and revisit multiple projects with clear lifecycle state.
+- Why it matters: Lumon is a fleet dashboard, not a single-project wizard.
+- Source: user
+- Primary owning slice: M001/S02
+- Supporting slices: M001/S06
+- Validation: validated
+- Notes: Proven in M001/S02 through canonical project creation, versioned local persistence, selection-safe restore, and live browser reload verification.
+
+### R012 — Execution-engine selection per project
+- Class: core-capability
+- Status: validated
+- Description: Each project must carry an explicit execution-engine choice between Claude Code and Codex.
+- Why it matters: Engine choice is part of the user-visible project identity and later execution behavior.
+- Source: user
+- Primary owning slice: M001/S02
+- Supporting slices: M003 (provisional)
+- Validation: validated
+- Notes: M001/S02 proves engine choice is stored, rendered, and restored per project; M003 will consume it for real handoff behavior.
 
 
 ## Deferred
@@ -345,7 +345,7 @@ Guidelines:
 | ID | Class | Status | Primary owner | Supporting | Proof |
 |---|---|---|---|---|---|
 | R001 | primary-user-loop | validated | M001/S01 | M001/S03, M001/S05, M001/S06 | validated |
-| R002 | core-capability | active | M001/S02 | M001/S06 | mapped |
+| R002 | core-capability | validated | M001/S02 | M001/S06 | validated |
 | R003 | primary-user-loop | active | M001/S03 | M002 (provisional) | mapped |
 | R004 | operability | active | M002 (provisional) | M001/S03 | mapped |
 | R005 | core-capability | active | M002 (provisional) | none | unmapped |
@@ -355,7 +355,7 @@ Guidelines:
 | R009 | integration | active | M002 (provisional) | M005 (provisional) | unmapped |
 | R010 | core-capability | active | M002 (provisional) | M001/S04, M003 (provisional) | mapped |
 | R011 | integration | active | M003 (provisional) | none | unmapped |
-| R012 | core-capability | active | M003 (provisional) | M001/S02 | mapped |
+| R012 | core-capability | validated | M001/S02 | M003 (provisional) | validated |
 | R013 | integration | active | M003 (provisional) | M004 (provisional) | unmapped |
 | R014 | quality-attribute | active | M003 (provisional) | M004 (provisional) | unmapped |
 | R015 | failure-visibility | active | M004 (provisional) | M001/S05 | mapped |
@@ -376,7 +376,7 @@ Guidelines:
 
 ## Coverage Summary
 
-- Active requirements: 19
+- Active requirements: 17
 - Mapped to slices or provisional milestone owners: 20
-- Validated: 1
+- Validated: 3
 - Unmapped active requirements: 0

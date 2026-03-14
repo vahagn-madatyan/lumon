@@ -1,3 +1,5 @@
+const VALID_ENGINE_CHOICES = new Set(["claude", "codex"]);
+
 const clampProgress = (value) => {
   const numeric = Number(value ?? 0);
   if (Number.isNaN(numeric)) return 0;
@@ -10,6 +12,14 @@ const toInteger = (value, fallback = 0) => {
 };
 
 const copyMeta = (meta) => (meta ? { ...meta } : {});
+
+const createIsoTimestamp = (value, fallback) => {
+  const source = typeof value === "string" && value ? value : fallback;
+  const timestamp = Date.parse(source);
+  return Number.isNaN(timestamp) ? fallback : new Date(timestamp).toISOString();
+};
+
+const normalizeEngineChoice = (value) => (VALID_ENGINE_CHOICES.has(value) ? value : "claude");
 
 const inferWaveTotal = (agents, explicitTotal) => {
   if (Number.isFinite(explicitTotal)) {
@@ -44,6 +54,80 @@ const inferEngineStatus = (stages) => {
   if (stages.some((stage) => stage.status === "queued")) return "queued";
   return "idle";
 };
+
+const slugifyProjectId = (value) => {
+  const slug = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/["']/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "project";
+};
+
+const buildSelectionIndex = (projects) => {
+  const projectsById = new Map();
+  const projectIdByAgentId = new Map();
+  const projectIdByStageId = new Map();
+
+  projects.forEach((project) => {
+    projectsById.set(project.id, project);
+    project.agents.forEach((agent) => {
+      projectIdByAgentId.set(agent.id, project.id);
+    });
+    project.execution.stages.forEach((stage) => {
+      projectIdByStageId.set(stage.id, project.id);
+    });
+  });
+
+  return {
+    projectsById,
+    projectIdByAgentId,
+    projectIdByStageId,
+  };
+};
+
+export function createProjectId(value, existingIds = []) {
+  const baseId = slugifyProjectId(value);
+  const usedIds = new Set(existingIds.filter(Boolean));
+
+  if (!usedIds.has(baseId)) {
+    return baseId;
+  }
+
+  let suffix = 2;
+  while (usedIds.has(`${baseId}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseId}-${suffix}`;
+}
+
+export function reconcileSelection(projects, selection = {}, options = {}) {
+  const defaultProjectId = options.defaultProjectId ?? projects[0]?.id ?? null;
+  const { projectsById, projectIdByAgentId, projectIdByStageId } = buildSelectionIndex(projects);
+
+  const requestedProjectId = selection?.projectId ?? null;
+  const requestedAgentId = selection?.agentId ?? null;
+  const requestedStageId = selection?.stageId ?? null;
+
+  const selectedProjectId =
+    (requestedProjectId && projectsById.has(requestedProjectId) ? requestedProjectId : null) ??
+    projectIdByAgentId.get(requestedAgentId) ??
+    projectIdByStageId.get(requestedStageId) ??
+    defaultProjectId;
+
+  const project = selectedProjectId ? projectsById.get(selectedProjectId) ?? null : null;
+  const agentProjectId = requestedAgentId ? projectIdByAgentId.get(requestedAgentId) ?? null : null;
+  const stageProjectId = requestedStageId ? projectIdByStageId.get(requestedStageId) ?? null : null;
+
+  return {
+    projectId: project?.id ?? null,
+    agentId: project && agentProjectId === project.id ? requestedAgentId : null,
+    stageId: project && stageProjectId === project.id ? requestedStageId : null,
+  };
+}
 
 export function createApprovalState(input = {}) {
   return {
@@ -117,11 +201,14 @@ export function createExecutionEngine(input = {}) {
   };
 }
 
-export function createProject(input = {}) {
+export function createProject(input = {}, options = {}) {
   if (!input.id) {
     throw new Error("Project requires an id");
   }
 
+  const now = createIsoTimestamp(options.now ?? new Date().toISOString(), new Date().toISOString());
+  const createdAt = createIsoTimestamp(input.createdAt, now);
+  const updatedAt = createIsoTimestamp(input.updatedAt, createdAt);
   const agents = (input.agents ?? []).map((agent) => createAgentSummary(agent));
   const waveTotal = inferWaveTotal(agents, input.waves?.total);
   const waveCurrent = inferWaveCurrent(agents, input.waves?.current, waveTotal);
@@ -142,6 +229,9 @@ export function createProject(input = {}) {
     name: input.name ?? input.id,
     description: input.description ?? input.desc ?? "",
     phaseLabel: input.phaseLabel ?? input.phase ?? "",
+    engineChoice: normalizeEngineChoice(input.engineChoice),
+    createdAt,
+    updatedAt,
     waves: {
       current: waveCurrent,
       total: waveTotal,
@@ -152,21 +242,15 @@ export function createProject(input = {}) {
   };
 }
 
-export function createLumonState(input = {}) {
-  const projects = (input.projects ?? []).map((project) => createProject(project));
-  const defaultProjectId = projects[0]?.id ?? null;
-  const selectedProjectId =
-    projects.some((project) => project.id === input.selection?.projectId)
-      ? input.selection.projectId
-      : defaultProjectId;
+export function createLumonState(input = {}, options = {}) {
+  const now = options.now ?? new Date().toISOString();
+  const projects = (input.projects ?? []).map((project) => createProject(project, { now }));
 
   return {
     projects,
-    selection: {
-      projectId: selectedProjectId,
-      agentId: input.selection?.agentId ?? null,
-      stageId: input.selection?.stageId ?? null,
-    },
+    selection: reconcileSelection(projects, input.selection, {
+      defaultProjectId: options.defaultProjectId,
+    }),
     meta: copyMeta(input.meta),
   };
 }

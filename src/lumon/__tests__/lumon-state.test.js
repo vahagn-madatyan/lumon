@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { createLumonState } from "../model";
 import { createSeedLumonState } from "../seed";
 import { lumonActions, lumonReducer } from "../reducer";
 import {
@@ -41,6 +42,14 @@ describe("Lumon state contract", () => {
     const selectedProject = selectSelectedProjectDetail(state);
 
     expect(state.projects).toHaveLength(14);
+    expect(state.projects[0]).toMatchObject({
+      id: "wheely",
+      engineChoice: "claude",
+      createdAt: "2026-01-13T16:00:00.000Z",
+      updatedAt: "2026-01-13T16:15:00.000Z",
+    });
+    expect(state.projects.every((project) => typeof project.createdAt === "string")).toBe(true);
+    expect(state.projects.every((project) => typeof project.updatedAt === "string")).toBe(true);
     expect(metrics).toMatchObject({
       active: 14,
       total: 33,
@@ -75,6 +84,57 @@ describe("Lumon state contract", () => {
     expect(screen.getByText("Wheely • 43% • running")).toBeVisible();
   });
 
+  it("reconciles project, agent, and stage selection tuples during canonical state creation", () => {
+    const projects = [
+      {
+        id: "alpha",
+        name: "Alpha",
+        agents: [{ id: "alpha-agent", name: "Alpha Agent" }],
+        execution: {
+          stages: [{ id: "alpha-stage", label: "Alpha Stage" }],
+        },
+      },
+      {
+        id: "beta",
+        name: "Beta",
+        engineChoice: "codex",
+        agents: [{ id: "beta-agent", name: "Beta Agent", type: "codex" }],
+        execution: {
+          stages: [{ id: "beta-stage", label: "Beta Stage" }],
+        },
+      },
+    ];
+
+    const reconciledToProject = createLumonState({
+      projects,
+      selection: {
+        projectId: "alpha",
+        agentId: "beta-agent",
+        stageId: "beta-stage",
+      },
+    });
+
+    const recoveredFromValidTuple = createLumonState({
+      projects,
+      selection: {
+        projectId: "missing",
+        agentId: "beta-agent",
+        stageId: "beta-stage",
+      },
+    });
+
+    expect(reconciledToProject.selection).toEqual({
+      projectId: "alpha",
+      agentId: null,
+      stageId: null,
+    });
+    expect(recoveredFromValidTuple.selection).toEqual({
+      projectId: "beta",
+      agentId: "beta-agent",
+      stageId: "beta-stage",
+    });
+  });
+
   it("keeps selected project and agent detail synchronized through reducer transitions", () => {
     let state = createSeedLumonState();
 
@@ -104,6 +164,95 @@ describe("Lumon state contract", () => {
       metrics: { running: 1, queued: 0, complete: 1, failed: 0 },
     });
     expect(selectSelectedAgentDetail(state)).toBeNull();
+  });
+
+  it("keeps project CRUD transitions canonical and selection-safe", () => {
+    let state = createLumonState({
+      projects: [
+        {
+          id: "alpha",
+          name: "Alpha",
+          engineChoice: "claude",
+          createdAt: "2026-02-01T00:00:00.000Z",
+          updatedAt: "2026-02-01T00:00:00.000Z",
+          agents: [{ id: "alpha-agent", name: "Alpha Agent" }],
+          execution: {
+            stages: [{ id: "alpha-stage", label: "Alpha Stage" }],
+          },
+        },
+      ],
+      selection: {
+        projectId: "alpha",
+        agentId: "alpha-agent",
+        stageId: "alpha-stage",
+      },
+    });
+
+    state = lumonReducer(
+      state,
+      lumonActions.addProject(
+        {
+          name: "Beta Project",
+          description: "Registry test project",
+          engineChoice: "codex",
+          agents: [{ id: "beta-agent", name: "Beta Agent", type: "codex" }],
+          execution: {
+            stages: [{ id: "beta-stage", label: "Beta Stage" }],
+          },
+        },
+        { now: "2026-02-02T00:00:00.000Z" },
+      ),
+    );
+
+    expect(state.projects.map((project) => project.id)).toEqual(["alpha", "beta-project"]);
+    expect(state.selection).toEqual({
+      projectId: "beta-project",
+      agentId: null,
+      stageId: null,
+    });
+    expect(state.projects.find((project) => project.id === "beta-project")).toMatchObject({
+      engineChoice: "codex",
+      createdAt: "2026-02-02T00:00:00.000Z",
+      updatedAt: "2026-02-02T00:00:00.000Z",
+    });
+
+    state = lumonReducer(state, lumonActions.selectAgent("alpha-agent"));
+    state = lumonReducer(state, lumonActions.selectStage("beta-stage"));
+
+    expect(state.selection).toEqual({
+      projectId: "beta-project",
+      agentId: null,
+      stageId: "beta-stage",
+    });
+
+    state = lumonReducer(
+      state,
+      lumonActions.updateProject(
+        "beta-project",
+        {
+          name: "Beta Prime",
+          engineChoice: "claude",
+        },
+        { now: "2026-02-03T00:00:00.000Z" },
+      ),
+    );
+
+    expect(state.projects.find((project) => project.id === "beta-project")).toMatchObject({
+      id: "beta-project",
+      name: "Beta Prime",
+      engineChoice: "claude",
+      createdAt: "2026-02-02T00:00:00.000Z",
+      updatedAt: "2026-02-03T00:00:00.000Z",
+    });
+
+    state = lumonReducer(state, lumonActions.removeProject("beta-project"));
+
+    expect(state.projects.map((project) => project.id)).toEqual(["alpha"]);
+    expect(state.selection).toEqual({
+      projectId: "alpha",
+      agentId: null,
+      stageId: null,
+    });
   });
 
   it("projects shared floor and orchestration view models from a single reducer-backed source of truth", () => {

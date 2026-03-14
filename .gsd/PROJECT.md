@@ -12,11 +12,13 @@ One operator can see where every project stands, understand what each agent is d
 
 ## Current State
 
-- Vite + React control shell now runs through a canonical `src/lumon/*` state spine with reducer, provider, seed data, and shared selectors.
+- Vite + React control shell now runs through a canonical `src/lumon/*` state spine with reducer, provider, seed data, shared selectors, and provider-bound persistence.
 - The mission-control UI has been split into provider-backed dashboard, orchestration, architecture, terminal, and modal surface modules instead of one monolith.
+- Canonical project creation now flows through the real shell: new projects get stable IDs/timestamps, a persisted engine choice, immediate selection, and reload-safe restore from the versioned local registry envelope.
+- Empty persisted registries are treated as valid state, and rendered mission-control surfaces now guard against missing seeded selection assumptions.
 - The Severance-inspired floor now renders from deterministic seeded layout data and the same project/agent truth as the dashboard.
-- Vitest + React Testing Library contract/integration tests prove reducer selectors and cross-surface synchronization.
-- Still missing: project persistence, explicit pre-build stage/approval progression, dossier/handoff packet views, repo/GSD integrations, and live runtime telemetry.
+- Vitest + React Testing Library contract/integration tests now cover reducer selectors, persistence round-trip behavior, and rendered create/remount registry restore.
+- Still missing: explicit pre-build stage/approval progression, dossier/handoff packet views, Severance floor live-state integration beyond seeded presentation, repo/GSD integrations, and live runtime telemetry.
 
 ## Architecture / Key Patterns
 

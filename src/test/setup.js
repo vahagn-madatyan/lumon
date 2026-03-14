@@ -4,6 +4,12 @@ import { afterEach, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
+
+  try {
+    window.localStorage?.clear?.();
+  } catch {
+    // Ignore environments where storage access is blocked.
+  }
 });
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -34,6 +40,10 @@ if (!window.matchMedia) {
 
 if (!HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView = vi.fn();
+}
+
+if (!Element.prototype.getAnimations) {
+  Element.prototype.getAnimations = vi.fn(() => []);
 }
 
 if (!SVGElement.prototype.getBBox) {
