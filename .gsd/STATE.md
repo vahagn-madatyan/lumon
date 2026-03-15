@@ -1,23 +1,23 @@
 # GSD State
 
-**Active Milestone:** M001 — Lumon Control Surface
+**Active Milestone:** None (M001 complete, M002 not started)
 **Active Slice:** None
-**Phase:** completing-milestone
+**Phase:** idle
 **Requirements Status:** 14 active · 6 validated · 5 deferred · 4 out of scope
 
 ## Milestone Registry
-- 🔄 **M001:** Lumon Control Surface
-- ⬜ **M002:** M002
-- ⬜ **M003:** M003
-- ⬜ **M004:** M004
-- ⬜ **M005:** M005
-- ⬜ **M006:** M006
+- ✅ **M001:** Lumon Control Surface — complete
+- ⬜ **M002:** Discovery & Approval Pipeline
+- ⬜ **M003:** Repo Provisioning & GSD Handoff
+- ⬜ **M004:** Autonomous Build Orchestrator
+- ⬜ **M005:** External Action Layer
+- ⬜ **M006:** Reliability, Governance, and Launch Readiness
 
 ## Recent Decisions
-- None recorded
+- D021: Pipeline-owned floor presence (M001/S05)
 
 ## Blockers
 - None
 
 ## Next Action
-All slices complete in M001. Write milestone summary.
+M001 complete. Ready to begin M002 planning.
