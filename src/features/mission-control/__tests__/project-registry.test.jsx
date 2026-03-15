@@ -4,6 +4,31 @@ import MissionControl from "@/mission-control";
 import { createLumonState } from "@/lumon/model";
 import { LUMON_REGISTRY_STORAGE_KEY, saveLumonState } from "@/lumon/persistence";
 
+function assertSelectedProjectDetailTabs(description) {
+  expect(screen.getByRole("tab", { name: /^overview$/i })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /^dossier$/i })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /^handoff$/i })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("tab", { name: /^dossier$/i }));
+
+  expect(screen.getByTestId("selected-project-dossier-panel")).toBeVisible();
+  expect(screen.getByTestId("selected-project-dossier-brief-summary")).toHaveTextContent(description);
+  expect(screen.getByTestId("selected-project-dossier-stage-intake-summary")).toHaveTextContent(
+    /awaiting operator intake approval/i,
+  );
+  expect(screen.getByTestId("selected-project-dossier-current-approval-summary")).toHaveTextContent(
+    /awaiting operator approval/i,
+  );
+
+  fireEvent.click(screen.getByRole("tab", { name: /^handoff$/i }));
+
+  expect(screen.getByTestId("selected-project-handoff-panel")).toBeVisible();
+  expect(screen.getByTestId("selected-project-handoff-status")).toHaveTextContent("Waiting");
+  expect(screen.getByTestId("selected-project-handoff-section-handoff-approval-summary")).toHaveTextContent(
+    /awaiting operator approval/i,
+  );
+}
+
 describe("MissionControl project registry", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -44,6 +69,7 @@ describe("MissionControl project registry", () => {
     expect(screen.getByTestId("dashboard-project-current-stage-registry-orbit")).toHaveTextContent("Intake");
     expect(screen.getByTestId("dashboard-project-current-gate-registry-orbit")).toHaveTextContent("Intake approval");
     expect(screen.getByTestId("dashboard-project-approval-state-registry-orbit")).toHaveTextContent("Pending approval");
+    assertSelectedProjectDetailTabs("Reload-proof registry creation flow");
 
     await waitFor(() => {
       const envelope = JSON.parse(window.localStorage.getItem(LUMON_REGISTRY_STORAGE_KEY) ?? "null");
@@ -77,6 +103,7 @@ describe("MissionControl project registry", () => {
     expect(screen.getByTestId("selected-project-current-gate")).toHaveTextContent("Intake approval");
     expect(screen.getByTestId("selected-project-current-approval")).toHaveTextContent("Pending approval");
     expect(screen.queryByTestId("dashboard-empty-registry")).not.toBeInTheDocument();
+    assertSelectedProjectDetailTabs("Reload-proof registry creation flow");
 
     fireEvent.click(screen.getByRole("tab", { name: /orchestration/i }));
 

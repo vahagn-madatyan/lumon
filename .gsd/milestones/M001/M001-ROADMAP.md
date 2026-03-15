@@ -59,7 +59,7 @@ This milestone is complete only when all are true:
 - [x] **S03: Pipeline board and approval model** `risk:medium` `depends:[S01,S02]`
   > After this: each project shows an explicit staged journey from intake to GSD handoff with approval-gated progression.
 
-- [ ] **S04: Project dossier and handoff packet views** `risk:medium` `depends:[S02,S03]`
+- [x] **S04: Project dossier and handoff packet views** `risk:medium` `depends:[S02,S03]`
   > After this: opening a project reveals its working brief, stage outputs, approval state, and the structure of the future handoff packet.
 
 - [ ] **S05: Severed floor live-state integration** `risk:medium` `depends:[S01,S02,S03]`

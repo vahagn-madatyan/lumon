@@ -26,6 +26,64 @@ export const LUMON_PREBUILD_STAGE_KEYS = Object.freeze({
   handoff: "handoff",
 });
 
+export const LUMON_DETAIL_STATES = Object.freeze({
+  ready: "ready",
+  waiting: "waiting",
+  blocked: "blocked",
+  missing: "missing",
+});
+
+export const LUMON_DOSSIER_SECTION_DEFINITIONS = Object.freeze({
+  brief: Object.freeze({
+    id: "dossier:brief",
+    kind: "brief",
+    label: "Working brief",
+    description: "Thin working brief derived from canonical project metadata and current pipeline truth.",
+  }),
+  currentApproval: Object.freeze({
+    id: "dossier:current-approval",
+    kind: "current_approval",
+    label: "Current approval",
+    description: "Current gate truth for the selected project without implied approval history.",
+  }),
+  stage: Object.freeze({
+    idPrefix: "dossier:stage:",
+    kind: "stage_output",
+    label: "Stage output",
+    description: "Per-stage output and approval truth from the canonical pipeline.",
+  }),
+});
+
+export const LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS = Object.freeze({
+  architecture: Object.freeze({
+    id: "handoff:architecture",
+    kind: "artifact",
+    label: "Architecture",
+    description: "Architecture handoff section backed by canonical research and planning truth once a real artifact exists.",
+  }),
+  specification: Object.freeze({
+    id: "handoff:specification",
+    kind: "artifact",
+    label: "Specs",
+    description: "Build specs handoff section backed by the canonical plan once a real artifact exists.",
+  }),
+  prototype: Object.freeze({
+    id: "handoff:prototype",
+    kind: "artifact",
+    label: "Prototype",
+    description: "Prototype handoff section backed by execution and verification truth once a real artifact exists.",
+  }),
+  approval: Object.freeze({
+    id: "handoff:approval",
+    kind: "approval",
+    label: "Approval state",
+    description: "Current approval truth for the final handoff gate.",
+  }),
+});
+
+export const buildLumonDossierStageSectionId = (stageKey) =>
+  `${LUMON_DOSSIER_SECTION_DEFINITIONS.stage.idPrefix}${stageKey ?? "unknown"}`;
+
 const PREBUILD_STAGE_BLUEPRINTS = Object.freeze({
   [LUMON_PREBUILD_STAGE_KEYS.intake]: Object.freeze({
     kind: "intake",

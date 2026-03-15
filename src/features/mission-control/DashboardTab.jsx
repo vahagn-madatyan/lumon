@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLumonActions, useLumonSelector } from "@/lumon/context";
 import {
   selectDashboardCards,
@@ -63,6 +64,30 @@ const APPROVAL_CLASSES = {
   needs_iteration: "bg-red-500/10 text-red-300 border-red-500/20",
 };
 
+const DETAIL_STATE_CLASSES = {
+  ready: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  waiting: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  blocked: "bg-red-500/15 text-red-300 border-red-500/30",
+  missing: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30",
+};
+
+const DETAIL_STATE_LABELS = {
+  ready: "Ready",
+  waiting: "Waiting",
+  blocked: "Blocked",
+  missing: "Missing",
+};
+
+function toTestIdSegment(value) {
+  const normalized = String(value ?? "unknown")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || "unknown";
+}
+
 function StatusBadge({ status }) {
   return (
     <Badge
@@ -94,6 +119,18 @@ function ApprovalBadge({ approval, testId }) {
       className={`font-mono text-[9px] font-semibold tracking-[0.08em] uppercase ${APPROVAL_CLASSES[approval?.state] ?? APPROVAL_CLASSES.not_required}`}
     >
       {approval?.stateLabel ?? "Auto advance"}
+    </Badge>
+  );
+}
+
+function DetailStateBadge({ state, testId }) {
+  return (
+    <Badge
+      data-testid={testId}
+      variant="outline"
+      className={`font-mono text-[9px] font-semibold tracking-[0.08em] uppercase ${DETAIL_STATE_CLASSES[state] ?? DETAIL_STATE_CLASSES.missing}`}
+    >
+      {DETAIL_STATE_LABELS[state] ?? state ?? "Unknown"}
     </Badge>
   );
 }
@@ -376,6 +413,354 @@ function SelectedProjectHeader({ project }) {
   );
 }
 
+function DossierBriefCard({ brief }) {
+  return (
+    <Card className="bg-zinc-900/60 border-zinc-800" data-testid="selected-project-dossier-brief">
+      <CardContent className="p-3.5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Dossier</div>
+            <div className="mt-1 font-mono text-sm font-bold text-zinc-200">{brief.label}</div>
+            <div className="mt-1 font-mono text-[10px] text-zinc-500 max-w-2xl">{brief.description}</div>
+          </div>
+          <DetailStateBadge state={brief.state} testId="selected-project-dossier-brief-state" />
+        </div>
+
+        <div
+          className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 font-mono text-[11px] text-zinc-300"
+          data-testid="selected-project-dossier-brief-summary"
+        >
+          {brief.summary}
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {brief.fields.map((field) => (
+            <div
+              key={field.id}
+              className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2"
+              data-testid={`selected-project-dossier-brief-field-${field.id}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-zinc-500">{field.label}</div>
+                {field.missing && (
+                  <Badge variant="outline" className="border-zinc-700 text-zinc-300 font-mono text-[8px] uppercase tracking-[0.08em]">
+                    Missing
+                  </Badge>
+                )}
+              </div>
+              <div className={`mt-2 font-mono text-[11px] leading-relaxed ${field.missing ? "text-amber-200" : "text-zinc-200"}`}>
+                {field.value ?? field.reason}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DossierCurrentApprovalCard({ section }) {
+  return (
+    <Card className="bg-zinc-900/60 border-zinc-800" data-testid="selected-project-dossier-current-approval">
+      <CardContent className="p-3.5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Approval</div>
+            <div className="mt-1 font-mono text-sm font-bold text-zinc-200">{section.label}</div>
+            <div className="mt-1 font-mono text-[10px] text-zinc-500 max-w-2xl">{section.description}</div>
+          </div>
+          <DetailStateBadge state={section.state} testId="selected-project-dossier-current-approval-state" />
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-3">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+            <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-zinc-500">Stage</div>
+            <div className="mt-1 font-mono text-[11px] text-zinc-200">{section.stageLabel ?? "No active stage"}</div>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+            <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-zinc-500">Gate</div>
+            <div className="mt-1 font-mono text-[11px] text-zinc-200">{section.gateLabel ?? "No active gate"}</div>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+            <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-zinc-500">Approval state</div>
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
+              <ApprovalBadge approval={section.approval} testId="selected-project-dossier-current-approval-badge" />
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 font-mono text-[11px] text-zinc-300"
+          data-testid="selected-project-dossier-current-approval-summary"
+        >
+          {section.summary}
+        </div>
+        <div className="font-mono text-[10px] text-zinc-500" data-testid="selected-project-dossier-current-approval-reason">
+          {section.reason}
+        </div>
+        {section.approval?.note && (
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 font-mono text-[10px] text-amber-200">
+            {section.approval.note}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DossierStageOutputCard({ section }) {
+  const baseTestId = `selected-project-dossier-stage-${section.stageKey}`;
+
+  return (
+    <Card className="bg-zinc-900/60 border-zinc-800" data-testid={baseTestId}>
+      <CardContent className="p-3.5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Stage output</div>
+            <div className="mt-1 font-mono text-sm font-bold text-zinc-200">{section.label}</div>
+            <div className="mt-1 font-mono text-[10px] text-zinc-500">{section.description}</div>
+          </div>
+          <DetailStateBadge state={section.state} testId={`${baseTestId}-state`} />
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className={`font-mono text-[9px] font-semibold uppercase tracking-[0.08em] ${PIPELINE_CLASSES[section.stateTone] ?? PIPELINE_CLASSES.queued}`}>
+            {section.isCurrent ? "current" : section.status}
+          </Badge>
+          <ApprovalBadge approval={section.approval} testId={`${baseTestId}-approval`} />
+          <Badge variant="secondary" className="bg-zinc-800 text-zinc-400 border-none font-mono text-[9px] uppercase tracking-[0.08em]">
+            {section.durationLabel}
+          </Badge>
+        </div>
+
+        <div
+          className={`rounded-lg border px-3 py-2 font-mono text-[11px] leading-relaxed ${
+            section.outputMissing
+              ? "border-amber-500/20 bg-amber-500/5 text-amber-100"
+              : "border-zinc-800 bg-zinc-950/70 text-zinc-300"
+          }`}
+          data-testid={`${baseTestId}-summary`}
+        >
+          {section.output ?? section.reason}
+        </div>
+        <div className="font-mono text-[10px] text-zinc-500" data-testid={`${baseTestId}-reason`}>
+          {section.reason}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DossierPanel({ project }) {
+  return (
+    <ScrollArea className="max-h-[52vh] rounded-xl border border-zinc-800 bg-zinc-950/30" data-testid="selected-project-dossier-panel">
+      <div className="p-3.5 space-y-3">
+        <DossierBriefCard brief={project.dossier.brief} />
+        <DossierCurrentApprovalCard section={project.currentApprovalSummary} />
+
+        <div className="space-y-2">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Stage ledger</div>
+            <div className="mt-1 font-mono text-sm font-bold text-zinc-200">Per-stage outputs</div>
+          </div>
+          <div className="grid gap-3 xl:grid-cols-2">
+            {project.dossier.stageOutputs.map((section) => (
+              <DossierStageOutputCard key={section.id} section={section} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  );
+}
+
+function HandoffSectionCard({ section }) {
+  const testIdSegment = toTestIdSegment(section.id);
+  const baseTestId = `selected-project-handoff-section-${testIdSegment}`;
+  const showReason = section.reason && section.reason !== section.summary;
+
+  return (
+    <Card className="bg-zinc-900/60 border-zinc-800" data-testid={baseTestId}>
+      <CardContent className="p-3.5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Packet section</div>
+            <div className="mt-1 font-mono text-sm font-bold text-zinc-200">{section.label}</div>
+            <div className="mt-1 font-mono text-[10px] text-zinc-500 max-w-xl">{section.description}</div>
+          </div>
+          <DetailStateBadge state={section.state} testId={`${baseTestId}-state`} />
+        </div>
+
+        <div
+          className={`rounded-lg border px-3 py-2 font-mono text-[11px] leading-relaxed ${
+            section.state === "blocked"
+              ? "border-red-500/20 bg-red-500/5 text-red-100"
+              : section.state === "waiting"
+                ? "border-amber-500/20 bg-amber-500/5 text-amber-100"
+                : section.state === "missing"
+                  ? "border-zinc-700 bg-zinc-950/70 text-zinc-300"
+                  : "border-emerald-500/20 bg-emerald-500/5 text-emerald-100"
+          }`}
+          data-testid={`${baseTestId}-summary`}
+        >
+          {section.summary}
+        </div>
+
+        {showReason && (
+          <div className="font-mono text-[10px] text-zinc-500" data-testid={`${baseTestId}-reason`}>
+            {section.reason}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 flex-wrap text-[9px] font-mono uppercase tracking-[0.08em] text-zinc-500">
+          {section.gateLabel && <span>{section.gateLabel}</span>}
+          {section.approval && <ApprovalBadge approval={section.approval} testId={`${baseTestId}-approval`} />}
+          {section.sourceStageKeys?.length > 0 && (
+            <span data-testid={`${baseTestId}-sources`}>Sources: {section.sourceStageKeys.join(", ")}</span>
+          )}
+        </div>
+
+        {section.evidence?.length > 0 && (
+          <div className="grid gap-2">
+            {section.evidence.map((evidence) => (
+              <div
+                key={`${section.id}:${evidence.stageKey}`}
+                className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2"
+                data-testid={`${baseTestId}-evidence-${evidence.stageKey}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-[10px] font-semibold text-zinc-200">{evidence.stageLabel}</div>
+                    <div className="mt-1 font-mono text-[10px] text-zinc-500">{evidence.reason}</div>
+                  </div>
+                  <DetailStateBadge state={evidence.state} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function HandoffPanel({ project }) {
+  const packet = project.handoffPacket;
+
+  return (
+    <ScrollArea className="max-h-[52vh] rounded-xl border border-zinc-800 bg-zinc-950/30" data-testid="selected-project-handoff-panel">
+      <div className="p-3.5 space-y-3">
+        <Card className="bg-zinc-900/60 border-zinc-800">
+          <CardContent className="p-3.5 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Build handoff</div>
+                <div className="mt-1 font-mono text-sm font-bold text-zinc-200">Packet readiness</div>
+                <div className="mt-1 font-mono text-[10px] text-zinc-500 max-w-2xl">
+                  Canonical packet outline for architecture, specs, prototype coverage, and final approval readiness.
+                </div>
+              </div>
+              <DetailStateBadge state={packet.status} testId="selected-project-handoff-status" />
+            </div>
+
+            <div
+              className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 font-mono text-[11px] text-zinc-300"
+              data-testid="selected-project-handoff-summary"
+            >
+              {packet.summary}
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-5 text-[10px] font-mono">
+              {[
+                { label: "Packet state", value: packet.status },
+                { label: "Ready", value: String(packet.readyCount) },
+                { label: "Waiting", value: String(packet.waitingCount) },
+                { label: "Blocked", value: String(packet.blockedCount) },
+                { label: "Missing", value: String(packet.missingCount) },
+              ].map((item) => (
+                <div key={item.label} className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                  <div className="uppercase tracking-[0.08em] text-zinc-600">{item.label}</div>
+                  <div className="mt-1 text-zinc-200 font-semibold">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-3 xl:grid-cols-2">
+          {packet.sections.map((section) => (
+            <HandoffSectionCard key={section.id} section={section} />
+          ))}
+        </div>
+      </div>
+    </ScrollArea>
+  );
+}
+
+function SelectedProjectOverview({ project, onSelectStage, onSelectAgent }) {
+  return (
+    <div className="space-y-3" data-testid="selected-project-overview-panel">
+      <SelectedProjectHeader project={project} />
+      <PipelineSnapshot project={project} onSelectStage={onSelectStage} prefix="selected-project" />
+      <AgentRoster project={project} onSelectAgent={onSelectAgent} />
+    </div>
+  );
+}
+
+function SelectedProjectPane({ project, onSelectStage, onSelectAgent }) {
+  return (
+    <Tabs defaultValue="overview" className="gap-3" data-testid="selected-project-detail-tabs">
+      <Card className="bg-zinc-900/60 border-zinc-800">
+        <CardContent className="p-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Selected project detail</div>
+            <div className="mt-1 font-mono text-sm font-bold text-zinc-200">Overview, dossier, and handoff</div>
+            <div className="mt-1 font-mono text-[10px] text-zinc-500 max-w-2xl">
+              One selector-owned detail seam: inspect the live overview, the canonical dossier, or the build handoff packet without leaving the dashboard.
+            </div>
+          </div>
+
+          <TabsList className="bg-zinc-950/70 border border-zinc-800" aria-label="Selected project detail views">
+            <TabsTrigger
+              value="overview"
+              data-testid="selected-project-tab-overview"
+              className="font-mono text-[11px] font-semibold tracking-wide data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 text-zinc-500"
+            >
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              value="dossier"
+              data-testid="selected-project-tab-dossier"
+              className="font-mono text-[11px] font-semibold tracking-wide data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 text-zinc-500"
+            >
+              Dossier
+            </TabsTrigger>
+            <TabsTrigger
+              value="handoff"
+              data-testid="selected-project-tab-handoff"
+              className="font-mono text-[11px] font-semibold tracking-wide data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 text-zinc-500"
+            >
+              Handoff
+            </TabsTrigger>
+          </TabsList>
+        </CardContent>
+      </Card>
+
+      <TabsContent value="overview" className="m-0">
+        <SelectedProjectOverview project={project} onSelectStage={onSelectStage} onSelectAgent={onSelectAgent} />
+      </TabsContent>
+
+      <TabsContent value="dossier" className="m-0">
+        <DossierPanel project={project} />
+      </TabsContent>
+
+      <TabsContent value="handoff" className="m-0">
+        <HandoffPanel project={project} />
+      </TabsContent>
+    </Tabs>
+  );
+}
+
 export default function DashboardTab({ onOpenNewProject }) {
   const dashboardCards = useLumonSelector(selectDashboardCards);
   const projects = useLumonSelector(selectDashboardProjects);
@@ -475,18 +860,18 @@ export default function DashboardTab({ onOpenNewProject }) {
 
       <div className="flex-1 p-4 flex flex-col min-h-0 gap-3">
         {selectedProject ? (
-          <>
-            <SelectedProjectHeader project={selectedProject} />
-            <PipelineSnapshot project={selectedProject} onSelectStage={selectStage} prefix="selected-project" />
-            <AgentRoster project={selectedProject} onSelectAgent={selectAgent} />
-          </>
+          <SelectedProjectPane
+            project={selectedProject}
+            onSelectStage={selectStage}
+            onSelectAgent={selectAgent}
+          />
         ) : (
           <Card className="bg-zinc-900/60 border-dashed border-zinc-700" data-testid="dashboard-no-selected-project">
             <CardContent className="p-4 space-y-3">
               <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Project detail</div>
               <div className="font-mono text-sm font-bold text-zinc-200">Create the first registry project</div>
               <div className="font-mono text-[11px] text-zinc-400 leading-relaxed max-w-2xl">
-                This restored state contains no selected project. Spawn a canonical project to light up the detail pane and downstream orchestration surfaces.
+                This restored state contains no selected project. Spawn a canonical project to light up the overview, dossier, and handoff views in the detail pane.
               </div>
               <Button
                 type="button"

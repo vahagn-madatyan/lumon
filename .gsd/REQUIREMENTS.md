@@ -89,7 +89,7 @@ Guidelines:
 - Primary owning slice: M002 (provisional)
 - Supporting slices: M001/S04, M003 (provisional)
 - Validation: mapped
-- Notes: M001 defines the dossier and packet structure; M002 fills it with real outputs.
+- Notes: M001/S04 now proves the dossier and packet structure, reload-safe detail rendering, and honest missing-state diagnostics; M002 fills it with real outputs.
 
 ### R011 — Repo creation and artifact upload for approved projects
 - Class: integration

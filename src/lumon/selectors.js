@@ -1,4 +1,11 @@
-import { LUMON_APPROVAL_STATES } from "./model";
+import {
+  LUMON_APPROVAL_STATES,
+  LUMON_DETAIL_STATES,
+  LUMON_DOSSIER_SECTION_DEFINITIONS,
+  LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS,
+  LUMON_PREBUILD_STAGE_KEYS,
+  buildLumonDossierStageSectionId,
+} from "./model";
 import { lumonFloorLayoutSeed } from "./seed";
 
 const formatCurrency = (value) => `$${Number(value ?? 0).toFixed(2)}`;
@@ -228,6 +235,398 @@ const buildApprovalViewModel = (approval) => {
   };
 };
 
+const BLOCKING_APPROVAL_STATES = new Set([
+  LUMON_APPROVAL_STATES.rejected,
+  LUMON_APPROVAL_STATES.needsIteration,
+]);
+
+const hasRecordedValue = (value) => (typeof value === "string" ? value.trim().length > 0 : value != null);
+
+const formatCount = (count, singular, plural = `${singular}s`) => `${count} ${count === 1 ? singular : plural}`;
+
+const buildBriefField = (id, label, value, missingReason) => ({
+  id,
+  label,
+  value: hasRecordedValue(value) ? value : null,
+  missing: !hasRecordedValue(value),
+  reason: !hasRecordedValue(value) ? missingReason : null,
+});
+
+const buildBriefSection = ({ project, pipeline, currentGate, engineLabel }) => {
+  const fields = [
+    buildBriefField("project-name", "Project", project.name, "Project name is missing from the canonical registry."),
+    buildBriefField(
+      "description",
+      "Current description",
+      project.description,
+      "No project description is recorded yet.",
+    ),
+    buildBriefField("phase", "Phase", project.phaseLabel, "No phase label is recorded yet."),
+    buildBriefField("engine", "Engine", engineLabel, "No engine choice is recorded yet."),
+    buildBriefField("current-stage", "Current stage", pipeline.currentStageLabel, "No current stage is recorded yet."),
+    buildBriefField("current-gate", "Current gate", currentGate?.label, "No current gate is recorded yet."),
+  ];
+  const missingCount = fields.filter((field) => field.missing).length;
+
+  return {
+    ...LUMON_DOSSIER_SECTION_DEFINITIONS.brief,
+    state: missingCount > 0 ? LUMON_DETAIL_STATES.missing : LUMON_DETAIL_STATES.ready,
+    reason:
+      missingCount > 0
+        ? `${formatCount(missingCount, "brief field")} missing from canonical project metadata.`
+        : "Brief derived from the current project metadata and pipeline truth.",
+    summary: hasRecordedValue(project.description) ? project.description : "No project description recorded yet.",
+    fields,
+  };
+};
+
+const buildCurrentApprovalSummary = ({ currentStage, currentGate }) => {
+  if (!currentStage || !currentGate) {
+    return {
+      ...LUMON_DOSSIER_SECTION_DEFINITIONS.currentApproval,
+      state: LUMON_DETAIL_STATES.missing,
+      reason: "No current stage is selected, so there is no active approval summary.",
+      stageId: null,
+      stageKey: null,
+      stageLabel: null,
+      gateId: null,
+      gateLabel: null,
+      approval: null,
+      summary: "No current approval state recorded.",
+    };
+  }
+
+  let state = LUMON_DETAIL_STATES.ready;
+  let reason = currentGate.required
+    ? `${currentGate.label} currently reports ${currentGate.stateLabel.toLowerCase()}.`
+    : `${currentStage.label} auto-advances without operator approval.`;
+
+  if (currentStage.status === "failed" || BLOCKING_APPROVAL_STATES.has(currentGate.state)) {
+    state = LUMON_DETAIL_STATES.blocked;
+    reason = currentStage.status === "failed"
+      ? `${currentStage.label} failed before its current gate could clear.`
+      : `${currentStage.label} is blocked at ${currentGate.label}.`;
+  } else if (currentGate.required && currentGate.state === LUMON_APPROVAL_STATES.pending) {
+    state = LUMON_DETAIL_STATES.waiting;
+    reason = `${currentStage.label} is waiting on ${currentGate.label}.`;
+  }
+
+  return {
+    ...LUMON_DOSSIER_SECTION_DEFINITIONS.currentApproval,
+    state,
+    reason,
+    stageId: currentStage.id,
+    stageKey: currentStage.stageKey,
+    stageLabel: currentStage.label,
+    gateId: currentGate.id,
+    gateLabel: currentGate.label,
+    approval: currentGate,
+    summary: currentGate.summary,
+  };
+};
+
+const resolveBlockedStageSectionReason = (stage) => {
+  if (stage.status === "failed") {
+    return `${stage.label} failed before it produced a stable dossier output.`;
+  }
+
+  if (stage.approval.state === LUMON_APPROVAL_STATES.needsIteration) {
+    return `${stage.label} is blocked at ${stage.approval.label} until another iteration lands.`;
+  }
+
+  return `${stage.label} is blocked at ${stage.approval.label}.`;
+};
+
+const resolveWaitingStageSectionReason = (stage) => {
+  if (stage.status === "running") {
+    return `${stage.label} is still executing.`;
+  }
+
+  if (stage.approval.required && stage.approval.state === LUMON_APPROVAL_STATES.pending) {
+    return `${stage.label} is waiting on ${stage.approval.label}.`;
+  }
+
+  if (stage.status === "queued") {
+    return `${stage.label} has not started yet.`;
+  }
+
+  return `${stage.label} is still in progress.`;
+};
+
+const buildDossierStageSection = (stage) => {
+  const outputAvailable = hasRecordedValue(stage.output);
+  const needsOutputNow = stage.isCurrent || stage.status === "running" || stage.status === "complete";
+
+  let state = LUMON_DETAIL_STATES.waiting;
+  let reason = resolveWaitingStageSectionReason(stage);
+
+  if (stage.status === "failed" || BLOCKING_APPROVAL_STATES.has(stage.approval.state)) {
+    state = LUMON_DETAIL_STATES.blocked;
+    reason = resolveBlockedStageSectionReason(stage);
+  } else if (!outputAvailable && needsOutputNow) {
+    state = LUMON_DETAIL_STATES.missing;
+    reason = `${stage.label} has no stage output recorded yet.`;
+  } else if (stage.isResolved) {
+    state = LUMON_DETAIL_STATES.ready;
+    reason = `${stage.label} is resolved and its current stage output is available.`;
+  }
+
+  return {
+    id: buildLumonDossierStageSectionId(stage.stageKey),
+    kind: LUMON_DOSSIER_SECTION_DEFINITIONS.stage.kind,
+    label: stage.label,
+    description: stage.description,
+    state,
+    reason,
+    summary: outputAvailable ? stage.output : reason,
+    stageId: stage.id,
+    stageKey: stage.stageKey,
+    status: stage.status,
+    stateTone: stage.stateTone,
+    durationLabel: stage.durationLabel,
+    output: outputAvailable ? stage.output : null,
+    outputMissing: !outputAvailable,
+    approval: stage.approval,
+    isCurrent: stage.isCurrent,
+    isSelected: stage.isSelected,
+    isResolved: stage.isResolved,
+  };
+};
+
+const buildDossierContract = ({ project, pipeline, currentStage, currentGate, stages, engineLabel }) => {
+  const brief = buildBriefSection({ project, pipeline, currentGate, engineLabel });
+  const currentApprovalSummary = buildCurrentApprovalSummary({ currentStage, currentGate });
+  const stageOutputs = stages.map((stage) => buildDossierStageSection(stage));
+
+  return {
+    brief,
+    currentApprovalSummary,
+    stageOutputs,
+    sections: [brief, currentApprovalSummary, ...stageOutputs],
+  };
+};
+
+const buildPacketEvidence = (stageSections) =>
+  stageSections.filter(Boolean).map((stageSection) => ({
+    sectionId: stageSection.id,
+    stageId: stageSection.stageId,
+    stageKey: stageSection.stageKey,
+    stageLabel: stageSection.label,
+    state: stageSection.state,
+    reason: stageSection.reason,
+    output: stageSection.output,
+    outputMissing: stageSection.outputMissing,
+    approval: stageSection.approval,
+  }));
+
+const resolvePacketArtifactContract = (definition, stageSections) => {
+  const blockedStage = stageSections.find((stageSection) => stageSection.state === LUMON_DETAIL_STATES.blocked);
+  if (blockedStage) {
+    return {
+      state: LUMON_DETAIL_STATES.blocked,
+      reason: `${definition.label} is blocked because ${blockedStage.label} is blocked.`,
+    };
+  }
+
+  const waitingStage = stageSections.find((stageSection) => stageSection.state === LUMON_DETAIL_STATES.waiting);
+  if (waitingStage) {
+    return {
+      state: LUMON_DETAIL_STATES.waiting,
+      reason: `${definition.label} is waiting on ${waitingStage.label}.`,
+    };
+  }
+
+  const missingStage = stageSections.find((stageSection) => stageSection.state === LUMON_DETAIL_STATES.missing);
+  if (missingStage) {
+    return {
+      state: LUMON_DETAIL_STATES.missing,
+      reason: `${definition.label} cannot be assembled because ${missingStage.label} has no recorded output.`,
+    };
+  }
+
+  return {
+    state: LUMON_DETAIL_STATES.missing,
+    reason: `No ${definition.label.toLowerCase()} artifact is stored in the canonical project yet.`,
+  };
+};
+
+const buildPacketArtifactSection = ({ definition, stageSections }) => {
+  const contract = resolvePacketArtifactContract(definition, stageSections);
+
+  return {
+    ...definition,
+    ...contract,
+    summary: contract.reason,
+    content: null,
+    sourceStageKeys: stageSections.map((stageSection) => stageSection.stageKey),
+    sourceStageIds: stageSections.map((stageSection) => stageSection.stageId),
+    evidence: buildPacketEvidence(stageSections),
+  };
+};
+
+const buildPacketApprovalSection = ({ pipeline, currentStage, stagesByKey }) => {
+  const definition = LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.approval;
+  const handoffStage = stagesByKey.get(LUMON_PREBUILD_STAGE_KEYS.handoff) ?? null;
+
+  if (!handoffStage) {
+    return {
+      ...definition,
+      state: LUMON_DETAIL_STATES.missing,
+      reason: "Canonical handoff stage is missing from this project.",
+      summary: "No handoff approval summary available.",
+      gateId: null,
+      gateLabel: null,
+      stageId: null,
+      stageKey: LUMON_PREBUILD_STAGE_KEYS.handoff,
+      stageLabel: "Handoff",
+      approval: null,
+      content: null,
+      sourceStageKeys: [],
+      sourceStageIds: [],
+      evidence: [],
+    };
+  }
+
+  let state = LUMON_DETAIL_STATES.waiting;
+  let reason = currentStage
+    ? `${handoffStage.label} approval will activate after ${currentStage.label} clears its current gate.`
+    : `${handoffStage.label} approval has not activated yet.`;
+
+  if (handoffStage.status === "failed" || BLOCKING_APPROVAL_STATES.has(handoffStage.approval.state)) {
+    state = LUMON_DETAIL_STATES.blocked;
+    reason = handoffStage.status === "failed"
+      ? `${handoffStage.label} failed before final approval.`
+      : `${handoffStage.approval.label} is blocked.`;
+  } else if (pipeline.readyForHandoff || pipeline.complete || handoffStage.isCurrent) {
+    state = LUMON_DETAIL_STATES.ready;
+    reason = pipeline.complete
+      ? "Final handoff approval has been cleared."
+      : "Final handoff approval is active and inspectable.";
+  }
+
+  return {
+    ...definition,
+    state,
+    reason,
+    summary: handoffStage.approval.summary,
+    gateId: handoffStage.approval.id,
+    gateLabel: handoffStage.approval.label,
+    stageId: handoffStage.stageId,
+    stageKey: handoffStage.stageKey,
+    stageLabel: handoffStage.label,
+    approval: handoffStage.approval,
+    content: null,
+    sourceStageKeys: [handoffStage.stageKey],
+    sourceStageIds: [handoffStage.stageId],
+    evidence: buildPacketEvidence([handoffStage]),
+  };
+};
+
+const summarizeDetailStates = (sections) =>
+  sections.reduce(
+    (summary, section) => {
+      summary[section.state] = (summary[section.state] ?? 0) + 1;
+      return summary;
+    },
+    {
+      [LUMON_DETAIL_STATES.ready]: 0,
+      [LUMON_DETAIL_STATES.waiting]: 0,
+      [LUMON_DETAIL_STATES.blocked]: 0,
+      [LUMON_DETAIL_STATES.missing]: 0,
+    },
+  );
+
+const resolvePacketStatus = (counts) => {
+  if (counts[LUMON_DETAIL_STATES.blocked] > 0) {
+    return LUMON_DETAIL_STATES.blocked;
+  }
+
+  if (counts[LUMON_DETAIL_STATES.waiting] > 0) {
+    return LUMON_DETAIL_STATES.waiting;
+  }
+
+  if (counts[LUMON_DETAIL_STATES.missing] > 0) {
+    return LUMON_DETAIL_STATES.missing;
+  }
+
+  return LUMON_DETAIL_STATES.ready;
+};
+
+const buildPacketSummary = (status, counts) => {
+  if (status === LUMON_DETAIL_STATES.blocked) {
+    return `${formatCount(counts[LUMON_DETAIL_STATES.blocked], "packet section")} blocked.`;
+  }
+
+  if (status === LUMON_DETAIL_STATES.waiting) {
+    return `${formatCount(counts[LUMON_DETAIL_STATES.waiting], "packet section")} waiting on upstream stages.`;
+  }
+
+  if (status === LUMON_DETAIL_STATES.missing) {
+    return `${formatCount(counts[LUMON_DETAIL_STATES.missing], "packet section")} still missing real handoff content.`;
+  }
+
+  return "Packet sections are ready for build handoff.";
+};
+
+const buildHandoffPacket = ({ pipeline, currentStage, stageOutputs }) => {
+  const stagesByKey = new Map(stageOutputs.map((stageSection) => [stageSection.stageKey, stageSection]));
+  const architectureSections = [
+    stagesByKey.get(LUMON_PREBUILD_STAGE_KEYS.research),
+    stagesByKey.get(LUMON_PREBUILD_STAGE_KEYS.plan),
+  ].filter(Boolean);
+  const specificationSections = [stagesByKey.get(LUMON_PREBUILD_STAGE_KEYS.plan)].filter(Boolean);
+  const prototypeSections = [
+    ...stageOutputs.filter((stageSection) => stageSection.stageKey.startsWith("wave-")),
+    stagesByKey.get(LUMON_PREBUILD_STAGE_KEYS.verification),
+  ].filter(Boolean);
+
+  const sections = [
+    buildPacketArtifactSection({
+      definition: LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.architecture,
+      stageSections: architectureSections,
+    }),
+    buildPacketArtifactSection({
+      definition: LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.specification,
+      stageSections: specificationSections,
+    }),
+    buildPacketArtifactSection({
+      definition: LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.prototype,
+      stageSections: prototypeSections,
+    }),
+    buildPacketApprovalSection({ pipeline, currentStage, stagesByKey }),
+  ];
+  const counts = summarizeDetailStates(sections);
+  const status = resolvePacketStatus(counts);
+
+  return {
+    status,
+    summary: buildPacketSummary(status, counts),
+    readyForBuild: status === LUMON_DETAIL_STATES.ready,
+    pipelineReady: pipeline.readyForHandoff || pipeline.complete,
+    readyCount: counts[LUMON_DETAIL_STATES.ready],
+    waitingCount: counts[LUMON_DETAIL_STATES.waiting],
+    blockedCount: counts[LUMON_DETAIL_STATES.blocked],
+    missingCount: counts[LUMON_DETAIL_STATES.missing],
+    sectionCount: sections.length,
+    sections,
+  };
+};
+
+const buildProjectDetailContract = ({ project, pipeline, currentStage, currentGate, stages, engineLabel }) => {
+  const dossier = buildDossierContract({ project, pipeline, currentStage, currentGate, stages, engineLabel });
+  const handoffPacket = buildHandoffPacket({
+    pipeline,
+    currentStage,
+    stageOutputs: dossier.stageOutputs,
+  });
+
+  return {
+    dossier,
+    handoffPacket,
+    currentApprovalSummary: dossier.currentApprovalSummary,
+  };
+};
+
 const resolveStagePresentationState = ({ stageStatus, isCurrent, pipelineStatus, approvalState }) => {
   if (stageStatus === "failed") return "failed";
   if (!isCurrent) return stageStatus;
@@ -281,7 +680,8 @@ const buildPipelineStatusSummary = (pipelineStatus, currentStage, currentGate) =
   return fallback;
 };
 
-const buildProjectViewModel = (project, selection, agentsById) => {
+const buildProjectViewModel = (project, selection, agentsById, options = {}) => {
+  const engineLabel = resolveEngineLabel(project.engineChoice);
   const agents = project.agents.map((agent) =>
     buildAgentViewModel(
       {
@@ -369,13 +769,24 @@ const buildProjectViewModel = (project, selection, agentsById) => {
     timeline: stages,
   };
 
+  const detailContract = options.includeDetailContract
+    ? buildProjectDetailContract({
+        project,
+        pipeline,
+        currentStage,
+        currentGate,
+        stages,
+        engineLabel,
+      })
+    : null;
+
   return {
     id: project.id,
     name: project.name,
     description: project.description,
     phaseLabel: project.phaseLabel,
     engineChoice: project.engineChoice,
-    engineLabel: resolveEngineLabel(project.engineChoice),
+    engineLabel,
     waveLabel: `Wave ${project.waves.current}/${project.waves.total}`,
     status: selectProjectStatus(project),
     metrics,
@@ -392,6 +803,7 @@ const buildProjectViewModel = (project, selection, agentsById) => {
     pipelineStatusLabel: pipeline.label,
     pipelineSummary: pipeline.summary,
     stageTimeline: stages,
+    ...(detailContract ?? {}),
   };
 };
 
@@ -437,7 +849,7 @@ export const selectSelectedProjectDetail = (state) => {
   if (!project) return null;
 
   const { agentsById } = buildIndex(state);
-  return buildProjectViewModel(project, state.selection, agentsById);
+  return buildProjectViewModel(project, state.selection, agentsById, { includeDetailContract: true });
 };
 
 export const selectSelectedAgentDetail = (state) => {

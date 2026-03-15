@@ -1,7 +1,14 @@
 import { createElement } from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { createCanonicalPrebuildStages, createLumonState, createProjectSpawnInput } from "../model";
+import {
+  LUMON_DOSSIER_SECTION_DEFINITIONS,
+  LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS,
+  buildLumonDossierStageSectionId,
+  createCanonicalPrebuildStages,
+  createLumonState,
+  createProjectSpawnInput,
+} from "../model";
 import { createSeedLumonState } from "../seed";
 import { lumonActions, lumonReducer } from "../reducer";
 import {
@@ -34,7 +41,7 @@ function StateProbe({ state }) {
   );
 }
 
-const createApprovalContractProject = () => {
+const createApprovalContractProject = (stageOverrides = {}) => {
   const agents = [
     {
       id: "alpha-agent",
@@ -49,7 +56,8 @@ const createApprovalContractProject = () => {
   return {
     id: "alpha",
     name: "Alpha",
-    phaseLabel: "Phase 1 — Operator Intake",
+    phaseLabel: "Phase 1 - Operator Intake",
+    description: "Thin dossier contract project",
     agents,
     waves: { current: 1, total: 1 },
     execution: {
@@ -87,6 +95,7 @@ const createApprovalContractProject = () => {
             status: "queued",
             output: "Pending handoff",
           },
+          ...stageOverrides,
         },
       }),
     },
@@ -260,6 +269,186 @@ describe("Lumon state contract", () => {
       projectId: "registry-orbit",
       agentId: null,
       stageId: null,
+    });
+  });
+
+  it("projects stable dossier and handoff packet sections from current selector truth", () => {
+    const state = createLumonState({
+      projects: [createApprovalContractProject()],
+      selection: {
+        projectId: "alpha",
+      },
+    });
+    const project = selectSelectedProjectDetail(state);
+    const architectureSection = project.handoffPacket.sections.find(
+      (section) => section.id === LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.architecture.id,
+    );
+    const prototypeSection = project.handoffPacket.sections.find(
+      (section) => section.id === LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.prototype.id,
+    );
+    const approvalSection = project.handoffPacket.sections.find(
+      (section) => section.id === LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.approval.id,
+    );
+
+    expect(state.projects[0]).not.toHaveProperty("dossier");
+    expect(state.projects[0]).not.toHaveProperty("handoffPacket");
+    expect(project.dossier.sections.map((section) => section.id)).toEqual([
+      LUMON_DOSSIER_SECTION_DEFINITIONS.brief.id,
+      LUMON_DOSSIER_SECTION_DEFINITIONS.currentApproval.id,
+      buildLumonDossierStageSectionId("intake"),
+      buildLumonDossierStageSectionId("research"),
+      buildLumonDossierStageSectionId("plan"),
+      buildLumonDossierStageSectionId("wave-1"),
+      buildLumonDossierStageSectionId("verification"),
+      buildLumonDossierStageSectionId("handoff"),
+    ]);
+    expect(project.dossier.brief).toMatchObject({
+      id: LUMON_DOSSIER_SECTION_DEFINITIONS.brief.id,
+      state: "ready",
+      summary: "Thin dossier contract project",
+    });
+    expect(project.currentApprovalSummary).toMatchObject({
+      id: LUMON_DOSSIER_SECTION_DEFINITIONS.currentApproval.id,
+      state: "waiting",
+      stageId: "alpha:verification",
+      stageKey: "verification",
+      gateId: "gate:verification-review",
+      gateLabel: "Verification approval",
+      approval: {
+        state: "pending",
+        note: "Awaiting verification sign-off",
+      },
+    });
+    expect(project.dossier.stageOutputs.find((section) => section.stageKey === "verification")).toMatchObject({
+      id: buildLumonDossierStageSectionId("verification"),
+      state: "waiting",
+      output: "Checks green",
+      approval: {
+        state: "pending",
+        note: "Awaiting verification sign-off",
+      },
+    });
+    expect(project.handoffPacket.sections.map((section) => section.id)).toEqual([
+      LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.architecture.id,
+      LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.specification.id,
+      LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.prototype.id,
+      LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.approval.id,
+    ]);
+    expect(architectureSection).toMatchObject({
+      state: "missing",
+      content: null,
+      sourceStageKeys: ["research", "plan"],
+    });
+    expect(architectureSection.reason).toMatch(/no architecture artifact/i);
+    expect(prototypeSection).toMatchObject({
+      state: "waiting",
+      content: null,
+    });
+    expect(prototypeSection.reason).toMatch(/verification/i);
+    expect(approvalSection).toMatchObject({
+      state: "waiting",
+      approval: {
+        state: "pending",
+      },
+    });
+    expect(project.handoffPacket).toMatchObject({
+      status: "waiting",
+      pipelineReady: false,
+      readyForBuild: false,
+    });
+  });
+
+  it("surfaces missing stage outputs and handoff packet transitions from canonical project state", () => {
+    const missingOutputState = createLumonState({
+      projects: [
+        createApprovalContractProject({
+          plan: {
+            status: "complete",
+            output: "",
+            approval: { state: "approved" },
+          },
+        }),
+      ],
+      selection: {
+        projectId: "alpha",
+      },
+    });
+    const missingOutputProject = selectSelectedProjectDetail(missingOutputState);
+    const missingPlanSection = missingOutputProject.dossier.stageOutputs.find((section) => section.stageKey === "plan");
+
+    expect(missingPlanSection).toMatchObject({
+      id: buildLumonDossierStageSectionId("plan"),
+      state: "missing",
+      output: null,
+      outputMissing: true,
+    });
+    expect(missingPlanSection.reason).toMatch(/no stage output recorded/i);
+
+    let state = createLumonState({
+      projects: [createApprovalContractProject()],
+      selection: {
+        projectId: "alpha",
+      },
+    });
+
+    state = lumonReducer(
+      state,
+      lumonActions.updateStage("alpha:verification", {
+        approval: {
+          state: "approved",
+          note: "Verification approved",
+        },
+      }),
+    );
+
+    let project = selectSelectedProjectDetail(state);
+    let approvalSection = project.handoffPacket.sections.find(
+      (section) => section.id === LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.approval.id,
+    );
+    let prototypeSection = project.handoffPacket.sections.find(
+      (section) => section.id === LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.prototype.id,
+    );
+
+    expect(project.pipeline.status).toBe("handoff_ready");
+    expect(project.handoffPacket).toMatchObject({
+      status: "missing",
+      pipelineReady: true,
+      readyForBuild: false,
+    });
+    expect(approvalSection).toMatchObject({
+      state: "ready",
+      approval: {
+        state: "pending",
+      },
+    });
+    expect(prototypeSection).toMatchObject({
+      state: "missing",
+      content: null,
+    });
+    expect(prototypeSection.reason).toMatch(/no prototype artifact/i);
+
+    state = lumonReducer(
+      state,
+      lumonActions.updateStage("alpha:handoff", {
+        approval: {
+          state: "needs_iteration",
+          note: "Need another operator pass",
+        },
+      }),
+    );
+
+    project = selectSelectedProjectDetail(state);
+    approvalSection = project.handoffPacket.sections.find(
+      (section) => section.id === LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS.approval.id,
+    );
+
+    expect(project.handoffPacket.status).toBe("blocked");
+    expect(approvalSection).toMatchObject({
+      state: "blocked",
+      approval: {
+        state: "needs_iteration",
+        note: "Need another operator pass",
+      },
     });
   });
 
