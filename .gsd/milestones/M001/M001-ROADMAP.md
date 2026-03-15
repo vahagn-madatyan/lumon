@@ -65,7 +65,7 @@ This milestone is complete only when all are true:
 - [x] **S05: Severed floor live-state integration** `risk:medium` `depends:[S01,S02,S03]`
   > After this: the Severance floor reflects real shared project and agent-summary state instead of isolated mock behavior.
 
-- [ ] **S06: End-to-end operator loop integration** `risk:high` `depends:[S03,S04,S05]`
+- [x] **S06: End-to-end operator loop integration** `risk:high` `depends:[S03,S04,S05]`
   > After this: the operator can create a project, move it through the M001 control flow, inspect it in detail, and watch all primary surfaces stay in sync.
 
 ## Boundary Map

@@ -21,8 +21,9 @@ One operator can see where every project stands, understand what each agent is d
 - Empty persisted registries are treated as valid state, and rendered mission-control surfaces now guard against missing seeded selection assumptions.
 - The Severance-inspired floor now renders pipeline-aware department room tones, persistent shell indicators for stuck projects, and pipeline diagnostics panels — all deriving from the same canonical project pipeline view models the dashboard uses.
 - Dashboard↔floor synchronization is proven for selected project, pipeline status, stage, gate, approval, and summary counts across waiting, blocked, handoff-ready, and running states.
-- Vitest + React Testing Library contract/integration tests now cover reducer selectors, persistence round-trip behavior, rendered create/remount registry restore, stage-first pipeline visibility, dossier/handoff detail rendering, and floor live-state synchronization.
-- Still missing: end-to-end operator loop proof (S06), repo/GSD integrations, and live runtime telemetry.
+- Vitest + React Testing Library tests cover reducer selectors, persistence round-trip, rendered create/remount registry restore, stage-first pipeline visibility, dossier/handoff detail rendering, floor live-state synchronization, and the full operator loop integration (7 test files, 32 tests).
+- M001 is complete: the operator loop (create → inspect → cross-surface → reload) is proven in both jsdom and the real browser entrypoint.
+- Still missing: repo/GSD integrations, live runtime telemetry, n8n workflow orchestration, and real agent runtime connections (M002+).
 
 ## Architecture / Key Patterns
 
@@ -39,7 +40,7 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 ## Milestone Sequence
 
-- [ ] M001: Lumon Control Surface — Turn the current prototype into a real operator shell with persistent projects, stage model, dossier surfaces, and synced Severance presentation.
+- [x] M001: Lumon Control Surface — Turn the current prototype into a real operator shell with persistent projects, stage model, dossier surfaces, and synced Severance presentation.
 - [ ] M002: Discovery & Approval Pipeline — Orchestrate stage-gated pre-build research, business planning, naming, technical planning, and prototype approval through n8n.
 - [ ] M003: Repo Provisioning & GSD Handoff — Create repos and workspaces, package approved artifacts, select execution engine, and bootstrap GSD-ready project handoff.
 - [ ] M004: Autonomous Build Orchestrator — Run and supervise independent project builds with live agent visibility, isolation, retry, and escalation behavior.
