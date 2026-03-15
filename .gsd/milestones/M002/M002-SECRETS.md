@@ -8,7 +8,7 @@
 **Service:** n8n (self-hosted or local instance)
 **Dashboard:** http://localhost:5678/settings
 **Format hint:** `http://localhost:5678` or `https://your-n8n.example.com`
-**Status:** pending
+**Status:** collected
 **Destination:** dotenv
 
 1. Start your local n8n instance (`npx n8n` or Docker)
@@ -20,7 +20,7 @@
 **Service:** n8n REST API
 **Dashboard:** http://localhost:5678/settings/api
 **Format hint:** Starts with `n8n_api_` followed by alphanumeric string
-**Status:** pending
+**Status:** collected
 **Destination:** dotenv
 
 1. Open your n8n instance at http://localhost:5678
@@ -34,7 +34,7 @@
 **Service:** Domainr (domain availability API via RapidAPI)
 **Dashboard:** https://rapidapi.com/domainr/api/domainr
 **Format hint:** Alphanumeric RapidAPI key, ~50 chars
-**Status:** pending
+**Status:** collected
 **Destination:** dotenv
 
 1. Sign up or log in at https://rapidapi.com
@@ -47,7 +47,7 @@
 **Service:** Marker API (USPTO trademark search)
 **Dashboard:** https://markerapi.com/account
 **Format hint:** Alphanumeric API key
-**Status:** pending
+**Status:** collected
 **Destination:** dotenv
 
 1. Sign up at https://markerapi.com

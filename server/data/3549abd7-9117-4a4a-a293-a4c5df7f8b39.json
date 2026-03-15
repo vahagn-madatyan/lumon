@@ -1,0 +1,14 @@
+{
+  "id": "3549abd7-9117-4a4a-a293-a4c5df7f8b39",
+  "projectId": "proj-lifecycle",
+  "stageKey": "discovery",
+  "type": "viability",
+  "content": {
+    "viable": true,
+    "confidence": 0.92
+  },
+  "metadata": {
+    "executionId": "fa607824-df92-4627-beb0-fea61c9ce95c"
+  },
+  "createdAt": "2026-03-15T22:19:31.827Z"
+}

@@ -14,6 +14,19 @@ afterEach(() => {
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+// Stub EventSource for jsdom — tests that need real behavior mock it themselves
+if (!globalThis.EventSource) {
+  globalThis.EventSource = class EventSource {
+    constructor() {
+      this.readyState = 0;
+      this.onerror = null;
+    }
+    addEventListener() {}
+    removeEventListener() {}
+    close() { this.readyState = 2; }
+  };
+}
+
 if (!globalThis.ResizeObserver) {
   globalThis.ResizeObserver = class ResizeObserver {
     observe() {}

@@ -209,6 +209,28 @@ const inferWaveCurrentFromAgents = (agents, explicitCurrent, total) => {
 
 const buildStageId = (projectId, stageKey) => (projectId && stageKey ? `${projectId}:${stageKey}` : stageKey ?? null);
 
+/**
+ * Returns true when output is a structured artifact reference
+ * (an object with at least an `artifactId` string).
+ */
+export const isStructuredOutput = (output) =>
+  output != null &&
+  typeof output === "object" &&
+  typeof output.artifactId === "string" &&
+  output.artifactId.length > 0;
+
+/**
+ * Returns a display-ready string from either output format:
+ * - string → returned as-is
+ * - { artifactId, summary, type } → returns `summary` (falls back to artifactId)
+ */
+export const getOutputSummary = (output) => {
+  if (isStructuredOutput(output)) {
+    return output.summary || output.artifactId;
+  }
+  return typeof output === "string" ? output : "Pending";
+};
+
 const parseWaveNumber = (value) => {
   if (typeof value !== "string") {
     return null;
@@ -437,7 +459,7 @@ export function createPipelineStage(input = {}, options = {}) {
     icon: input.icon ?? stageBlueprint.icon ?? "Workflow",
     status,
     durationLabel: input.durationLabel ?? input.duration ?? "—",
-    output: input.output ?? "Pending",
+    output: isStructuredOutput(input.output) ? { ...input.output } : (input.output ?? "Pending"),
     agentIds: [...(input.agentIds ?? [])],
     approval: createApprovalState(input.approval, {
       stageKey,

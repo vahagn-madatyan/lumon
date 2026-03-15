@@ -1,0 +1,117 @@
+{
+  "name": "Lumon — Intake Viability Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-intake"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Viability analysis for the incoming project\nconst { projectId, stageKey, executionId } = $input.first().json.body;\n\nconst sections = {\n  marketAssessment: {\n    score: Math.floor(Math.random() * 30) + 70,\n    summary: \"Market shows strong demand signals with growing TAM. Competitive landscape has gaps in automation and AI-driven workflows.\",\n    keyFindings: [\n      \"TAM growing at 15% CAGR\",\n      \"3 direct competitors, none with full automation\",\n      \"Customer pain points well-documented in industry reports\"\n    ]\n  },\n  technicalFeasibility: {\n    score: Math.floor(Math.random() * 20) + 75,\n    summary: \"Core technology stack is proven. Integration points are well-documented. Main risk is in real-time data pipeline complexity.\",\n    keyFindings: [\n      \"API integrations available for all required services\",\n      \"Real-time processing achievable with current infrastructure\",\n      \"No novel algorithms required — proven patterns exist\"\n    ]\n  },\n  riskFactors: [\n    { level: \"medium\", factor: \"Market timing — early mover advantage window is 6-9 months\" },\n    { level: \"low\", factor: \"Technical debt — greenfield build reduces legacy risk\" },\n    { level: \"medium\", factor: \"Regulatory — data handling requirements vary by jurisdiction\" }\n  ],\n  recommendation: {\n    decision: \"proceed\",\n    confidence: 0.85,\n    summary: \"Project shows strong viability across all dimensions. Recommend proceeding to architecture phase with focus on real-time pipeline design.\",\n    nextSteps: [\n      \"Define detailed technical architecture\",\n      \"Identify key integration partners\",\n      \"Establish data compliance framework\"\n    ]\n  }\n};\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    viabilityResult: sections\n  }\n};"
+      },
+      "id": "viability-analysis",
+      "name": "Viability Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, result: { type: 'viability-analysis', content: $json.viabilityResult, metadata: { generatedAt: new Date().toISOString(), engine: 'n8n-intake-v1' } }, resumeUrl: $execution.resumeUrl }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "options": {}
+      },
+      "id": "wait-for-approval",
+      "name": "Wait for Approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Post-approval handler\n// The Wait node resumes when the bridge server calls the resumeUrl\nconst approvalData = $input.first().json;\n\nconsole.log(`[lumon-n8n] Approval received for project=${approvalData.body?.projectId || 'unknown'}`);\nconsole.log(`[lumon-n8n] Decision: approved — pipeline may now advance to next stage`);\n\nreturn {\n  json: {\n    status: 'approval_received',\n    message: 'Pipeline stage approved — ready for next stage execution',\n    receivedAt: new Date().toISOString()\n  }\n};"
+      },
+      "id": "post-approval",
+      "name": "Post Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Viability Analysis", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Viability Analysis": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Callback to Bridge": {
+      "main": [
+        [
+          { "node": "Wait for Approval", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Wait for Approval": {
+      "main": [
+        [
+          { "node": "Post Approval", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "1"
+}

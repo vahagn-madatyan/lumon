@@ -5,6 +5,8 @@ import {
   LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS,
   LUMON_PREBUILD_STAGE_KEYS,
   buildLumonDossierStageSectionId,
+  isStructuredOutput,
+  getOutputSummary,
 } from "./model";
 import { lumonFloorLayoutSeed } from "./seed";
 
@@ -432,6 +434,8 @@ const resolveWaitingStageSectionReason = (stage) => {
 const buildDossierStageSection = (stage) => {
   const outputAvailable = hasRecordedValue(stage.output);
   const needsOutputNow = stage.isCurrent || stage.status === "running" || stage.status === "complete";
+  const structured = isStructuredOutput(stage.output);
+  const outputSummary = getOutputSummary(stage.output);
 
   let state = LUMON_DETAIL_STATES.waiting;
   let reason = resolveWaitingStageSectionReason(stage);
@@ -454,14 +458,17 @@ const buildDossierStageSection = (stage) => {
     description: stage.description,
     state,
     reason,
-    summary: outputAvailable ? stage.output : reason,
+    summary: outputAvailable ? outputSummary : reason,
     stageId: stage.id,
     stageKey: stage.stageKey,
     status: stage.status,
     stateTone: stage.stateTone,
     durationLabel: stage.durationLabel,
     output: outputAvailable ? stage.output : null,
+    outputSummary: outputAvailable ? outputSummary : null,
     outputMissing: !outputAvailable,
+    artifactId: structured ? stage.output.artifactId : null,
+    hasArtifact: structured,
     approval: stage.approval,
     isCurrent: stage.isCurrent,
     isSelected: stage.isSelected,
@@ -491,7 +498,10 @@ const buildPacketEvidence = (stageSections) =>
     state: stageSection.state,
     reason: stageSection.reason,
     output: stageSection.output,
+    outputSummary: stageSection.outputSummary,
     outputMissing: stageSection.outputMissing,
+    artifactId: stageSection.artifactId,
+    hasArtifact: stageSection.hasArtifact,
     approval: stageSection.approval,
   }));
 
@@ -789,6 +799,8 @@ const buildProjectViewModel = (project, selection, agentsById, options = {}) => 
       approvalState: approval.state,
     });
 
+    const structured = isStructuredOutput(stage.output);
+
     return {
       id: stage.id,
       stageKey: stage.stageKey,
@@ -798,6 +810,9 @@ const buildProjectViewModel = (project, selection, agentsById, options = {}) => 
       icon: stage.icon,
       durationLabel: stage.durationLabel,
       output: stage.output,
+      outputSummary: getOutputSummary(stage.output),
+      artifactId: structured ? stage.output.artifactId : null,
+      hasArtifact: structured,
       status,
       progress,
       stateTone: presentationState,

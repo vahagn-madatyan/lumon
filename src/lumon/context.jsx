@@ -3,9 +3,11 @@ import { createContext, useContext, useEffect, useMemo, useReducer } from "react
 import { lumonActions, lumonReducer } from "./reducer";
 import { createSeedLumonState } from "./seed";
 import { lumonLocalPersistence } from "./persistence";
+import { useServerSync } from "./sync";
 
 const LumonStateContext = createContext(null);
 const LumonActionsContext = createContext(null);
+const ServerSyncContext = createContext(null);
 
 const createStatusPatch = (agent, status, changes = {}) => {
   const baseChanges = { ...changes, status };
@@ -51,6 +53,10 @@ export function LumonProvider({ children, initialState, persistence = lumonLocal
     persistence?.saveState?.(state);
   }, [persistence, state]);
 
+  // Server sync — connects to bridge server SSE for the selected project
+  const selectedProjectId = state?.selection?.projectId ?? null;
+  const sync = useServerSync({ projectId: selectedProjectId, dispatch });
+
   const actions = useMemo(
     () => ({
       dispatch,
@@ -71,13 +77,17 @@ export function LumonProvider({ children, initialState, persistence = lumonLocal
 
         dispatch(lumonActions.updateAgent(agent.id, createStatusPatch(agent, status, changes)));
       },
+      triggerPipeline: sync.triggerPipeline,
+      approvePipeline: sync.approvePipeline,
     }),
-    [dispatch],
+    [dispatch, sync.triggerPipeline, sync.approvePipeline],
   );
 
   return (
     <LumonStateContext.Provider value={state}>
-      <LumonActionsContext.Provider value={actions}>{children}</LumonActionsContext.Provider>
+      <LumonActionsContext.Provider value={actions}>
+        <ServerSyncContext.Provider value={sync}>{children}</ServerSyncContext.Provider>
+      </LumonActionsContext.Provider>
     </LumonStateContext.Provider>
   );
 }
@@ -103,6 +113,14 @@ export function useLumonActions() {
 export function useLumonSelector(selector) {
   const state = useLumonState();
   return useMemo(() => selector(state), [selector, state]);
+}
+
+export function useServerSyncStatus() {
+  const sync = useContext(ServerSyncContext);
+  if (!sync) {
+    throw new Error("useServerSyncStatus must be used within a LumonProvider");
+  }
+  return sync;
 }
 
 export function useLumon() {

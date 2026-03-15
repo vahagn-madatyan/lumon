@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useLumonActions, useLumonSelector } from "@/lumon/context";
+import { useLumonActions, useLumonSelector, useServerSyncStatus } from "@/lumon/context";
 import {
   selectDashboardCards,
   selectDashboardProjects,
@@ -13,16 +13,23 @@ import {
 import {
   Activity,
   ArrowRight,
+  Check,
   CheckCircle2,
   Clock3,
   DollarSign,
   GitBranch,
   Hash,
+  Loader2,
+  Play,
   Plus,
   Server,
   ShieldAlert,
+  Wifi,
+  WifiOff,
+  X,
   Zap,
 } from "lucide-react";
+import { useState } from "react";
 import TerminalPanel from "./TerminalPanel";
 
 const CARD_ICONS = {
@@ -712,12 +719,15 @@ function SelectedProjectPane({ project, onSelectStage, onSelectAgent }) {
     <Tabs defaultValue="overview" className="gap-3" data-testid="selected-project-detail-tabs">
       <Card className="bg-zinc-900/60 border-zinc-800">
         <CardContent className="p-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Selected project detail</div>
-            <div className="mt-1 font-mono text-sm font-bold text-zinc-200">Overview, dossier, and handoff</div>
-            <div className="mt-1 font-mono text-[10px] text-zinc-500 max-w-2xl">
-              One selector-owned detail seam: inspect the live overview, the canonical dossier, or the build handoff packet without leaving the dashboard.
+          <div className="space-y-2">
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Selected project detail</div>
+              <div className="mt-1 font-mono text-sm font-bold text-zinc-200">Overview, dossier, and handoff</div>
+              <div className="mt-1 font-mono text-[10px] text-zinc-500 max-w-2xl">
+                One selector-owned detail seam: inspect the live overview, the canonical dossier, or the build handoff packet without leaving the dashboard.
+              </div>
             </div>
+            <PipelineActions project={project} />
           </div>
 
           <TabsList className="bg-zinc-950/70 border border-zinc-800" aria-label="Selected project detail views">
@@ -761,6 +771,128 @@ function SelectedProjectPane({ project, onSelectStage, onSelectAgent }) {
   );
 }
 
+function ConnectionStatusIndicator() {
+  const { connected, error } = useServerSyncStatus();
+
+  return (
+    <div
+      className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.08em]"
+      data-testid="sync-connection-status"
+    >
+      {connected ? (
+        <>
+          <Wifi size={10} className="text-emerald-400" />
+          <span className="text-emerald-400">Connected</span>
+        </>
+      ) : (
+        <>
+          <WifiOff size={10} className="text-zinc-500" />
+          <span className="text-zinc-500">{error || "Disconnected"}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PipelineActions({ project }) {
+  const { triggerPipeline, approvePipeline } = useLumonActions();
+  const [loading, setLoading] = useState(null); // "trigger" | "approve" | "reject" | null
+
+  if (!project) return null;
+
+  const currentStage = project.currentStage;
+  const canTrigger =
+    currentStage?.stageKey === "intake" && currentStage?.status === "queued";
+  const canApprove =
+    currentStage?.approval?.state === "pending" && currentStage?.approval?.required;
+
+  const handleTrigger = async () => {
+    setLoading("trigger");
+    try {
+      await triggerPipeline(project.id, currentStage.stageKey);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleApprove = async () => {
+    setLoading("approve");
+    try {
+      await approvePipeline(project.id, currentStage.stageKey, "approved");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleReject = async () => {
+    setLoading("reject");
+    try {
+      await approvePipeline(project.id, currentStage.stageKey, "rejected");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  if (!canTrigger && !canApprove) return null;
+
+  return (
+    <div className="flex items-center gap-2" data-testid="pipeline-actions">
+      {canTrigger && (
+        <Button
+          type="button"
+          size="sm"
+          onClick={handleTrigger}
+          disabled={loading !== null}
+          data-testid="trigger-discovery-btn"
+          className="font-mono text-[10px] font-semibold bg-emerald-500 text-zinc-950 hover:bg-emerald-400 disabled:opacity-50"
+        >
+          {loading === "trigger" ? (
+            <Loader2 size={12} className="mr-1.5 animate-spin" />
+          ) : (
+            <Play size={12} className="mr-1.5" />
+          )}
+          Trigger Discovery
+        </Button>
+      )}
+      {canApprove && (
+        <>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleApprove}
+            disabled={loading !== null}
+            data-testid="approve-btn"
+            className="font-mono text-[10px] font-semibold bg-green-500 text-zinc-950 hover:bg-green-400 disabled:opacity-50"
+          >
+            {loading === "approve" ? (
+              <Loader2 size={12} className="mr-1.5 animate-spin" />
+            ) : (
+              <Check size={12} className="mr-1.5" />
+            )}
+            Approve
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleReject}
+            disabled={loading !== null}
+            data-testid="reject-btn"
+            className="font-mono text-[10px] font-semibold border-red-500/30 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+          >
+            {loading === "reject" ? (
+              <Loader2 size={12} className="mr-1.5 animate-spin" />
+            ) : (
+              <X size={12} className="mr-1.5" />
+            )}
+            Reject
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardTab({ onOpenNewProject }) {
   const dashboardCards = useLumonSelector(selectDashboardCards);
   const projects = useLumonSelector(selectDashboardProjects);
@@ -773,10 +905,13 @@ export default function DashboardTab({ onOpenNewProject }) {
     <div className="flex h-full">
       <ScrollArea className="w-[460px] border-r border-zinc-800">
         <div className="p-4 space-y-4">
-          <div className="grid grid-cols-4 gap-2">
-            {dashboardCards.map((card) => (
-              <MetricCard key={card.id} card={card} />
-            ))}
+          <div className="flex items-center justify-between gap-3">
+            <div className="grid grid-cols-4 gap-2 flex-1">
+              {dashboardCards.map((card) => (
+                <MetricCard key={card.id} card={card} />
+              ))}
+            </div>
+            <ConnectionStatusIndicator />
           </div>
 
           <Button

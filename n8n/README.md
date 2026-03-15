@@ -1,0 +1,120 @@
+# n8n Integration — Lumon Pipeline
+
+## Prerequisites
+
+- **n8n** running locally — either via Docker or npm
+- **Lumon** dev server running (`npm run dev` from project root)
+
+### Start n8n with Docker (recommended)
+
+```bash
+docker run -d \
+  --name n8n \
+  -p 5678:5678 \
+  -e WEBHOOK_URL=http://localhost:5678 \
+  -v n8n_data:/home/node/.n8n \
+  n8nio/n8n
+```
+
+If running on macOS with the Lumon bridge server on the host, n8n inside Docker reaches the bridge at `http://host.docker.internal:3001`. The workflow template uses this by default.
+
+### Start n8n with npm
+
+```bash
+npx n8n start
+```
+
+When running n8n directly on the host, update the callback URL in the workflow to `http://localhost:3001`.
+
+## Import the Workflow
+
+1. Open n8n at [http://localhost:5678](http://localhost:5678)
+2. Go to **Workflows → Import from File**
+3. Select `n8n/workflows/intake-viability.json`
+4. Click **Save**
+5. **Activate** the workflow (toggle in the top-right)
+
+After activation, note the webhook URL shown on the Webhook Trigger node — it will look like:
+
+```
+http://localhost:5678/webhook/lumon-intake
+```
+
+## Configure the Bridge Server
+
+Set the `N8N_WEBHOOK_URL` environment variable before starting the Lumon dev server:
+
+```bash
+export N8N_WEBHOOK_URL=http://localhost:5678/webhook/lumon-intake
+npm run dev
+```
+
+Or create a `.env` file in the project root:
+
+```
+N8N_WEBHOOK_URL=http://localhost:5678/webhook/lumon-intake
+```
+
+## Configure the Callback URL (n8n → bridge)
+
+The workflow's "Callback to Bridge" node sends results back to the Lumon bridge server. It uses the `LUMON_BRIDGE_URL` environment variable in n8n, defaulting to `http://host.docker.internal:3001` (Docker on macOS).
+
+**If running n8n directly on the host (not Docker):**
+
+1. Open the imported workflow in n8n
+2. Click the **Callback to Bridge** node
+3. Change the URL from `http://host.docker.internal:3001` to `http://localhost:3001`
+4. Save the workflow
+
+**If using Docker:** The default `host.docker.internal:3001` should work on macOS and Windows. On Linux, use `--add-host=host.docker.internal:host-gateway` in the Docker run command.
+
+## Expected Flow
+
+```
+┌──────────────┐     POST /webhook/lumon-intake      ┌──────────────┐
+│ Lumon Bridge │ ──────────────────────────────────► │     n8n      │
+│  (port 3001) │     { projectId, stageKey,          │  (port 5678) │
+│              │       executionId }                  │              │
+│              │                                      │  1. Receive  │
+│              │                                      │  2. Analyze  │
+│              │     POST /api/pipeline/callback      │  3. Callback │
+│              │ ◄────────────────────────────────── │              │
+│              │     { executionId, projectId,        │  4. Wait for │
+│              │       stageKey, result, resumeUrl }  │     approval │
+│              │                                      │              │
+│              │     GET resumeUrl                    │              │
+│              │ ──────────────────────────────────► │  5. Resume   │
+│              │     (on operator approve)            │              │
+└──────────────┘                                      └──────────────┘
+        ▲                                                     │
+        │              SSE events                             │
+        ├─── stage-update (awaiting_approval)                 │
+        ├─── artifact-ready (viability result)                │
+        └─── pipeline-status (approved/rejected)              │
+                                                              │
+┌──────────────┐                                              │
+│ Lumon Client │  ← SSE stream ← Bridge                      │
+│  (browser)   │  Trigger / Approve / Reject buttons          │
+└──────────────┘
+```
+
+## Verifying the Integration
+
+1. Start n8n, import and activate the workflow
+2. Start Lumon: `N8N_WEBHOOK_URL=http://localhost:5678/webhook/lumon-intake npm run dev`
+3. Open Lumon dashboard at [http://localhost:5173](http://localhost:5173)
+4. Create or select a project
+5. Click **Trigger Discovery** — the button appears on the intake stage when status is `queued`
+6. n8n executes the viability analysis and calls back to the bridge
+7. The artifact appears in the Dossier tab under "Stage outputs"
+8. Click **Approve** or **Reject** to complete the loop
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| "n8n unreachable" on trigger | n8n not running or wrong URL | Check n8n is running and `N8N_WEBHOOK_URL` is correct |
+| "n8n webhook failed" (502) | Workflow not activated | Activate the workflow in n8n |
+| Callback never arrives | Wrong callback URL in n8n | Check the Callback node URL matches bridge server |
+| resumeUrl errors on approve | n8n execution expired | Re-trigger; n8n Wait nodes have a default timeout |
+| SSE not connecting | Vite proxy not configured | Ensure `/api` proxy is set in `vite.config.js` |

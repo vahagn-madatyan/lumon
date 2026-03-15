@@ -21,9 +21,13 @@ One operator can see where every project stands, understand what each agent is d
 - Empty registries are valid canonical state with explicit create-first UI fallbacks.
 - Severance floor renders pipeline-aware department room tones, persistent shell indicators for stuck projects, and diagnostics panels — all deriving from canonical project pipeline view models.
 - Dashboard↔floor synchronization proven for selected project, pipeline status, stage, gate, approval, and summary counts.
-- Vitest + RTL tests cover reducer/selectors, persistence, rendered registry, pipeline visibility, dossier/handoff, floor sync, and full operator loop (7 files, 32 tests).
+- **Express bridge server at `server/` with 5 REST endpoints (trigger, callback, approve, artifact get, status) and disk-based JSON artifact storage. Vite proxies `/api/*` to Express; `npm run dev` starts both servers.**
+- **`stage.output` migrated from string to `{ artifactId, summary, type }` structured references with backward-compatible coercion — all M001 selectors consume the new shape without modification.**
+- **SSE endpoint streams typed events per projectId; `useServerSync` hook bridges server events to reducer dispatch. Dashboard shows connection status and conditional trigger/approve/reject buttons.**
+- **n8n intake/viability workflow template shipped as importable JSON. Full trigger→execute→callback→approve loop proven against live n8n Docker instance.**
+- Vitest + RTL tests cover reducer/selectors, persistence, rendered registry, pipeline visibility, dossier/handoff, floor sync, full operator loop, API contracts, artifact output migration, and server sync (10 files, 75 tests).
 - The full operator loop (create → inspect → cross-surface → reload) is proven in jsdom and real browser.
-- Next: M002 will attach real pre-build research, business planning, naming, and n8n-orchestrated approval workflows to the stable stage/gate contracts.
+- Next: M002/S02 adds research and business planning stages; S03 adds naming and brand signals; S04 integrates the full pipeline with offline mode.
 
 ## Architecture / Key Patterns
 
@@ -33,7 +37,10 @@ One operator can see where every project stands, understand what each agent is d
 - React 19 + Vite + `@xyflow/react` remain the UI foundation.
 - The Severance-style presentation is part of the product value, not disposable polish.
 - Persistence uses a versioned localStorage envelope at the provider boundary with explicit initialState precedence.
-- Stage taxonomy and gate IDs are stable contracts ready for n8n attachment.
+- Stage taxonomy and gate IDs are stable contracts consumed by the n8n integration layer.
+- Express bridge server at `server/` handles n8n communication, artifact persistence, and SSE event streaming. Pipeline execution state is in-memory; artifacts persist to disk as JSON files.
+- n8n workflow templates live in `n8n/workflows/` as importable JSON. The Wait node resumeUrl is the approval primitive — never auto-resumed.
+- `vitest.workspace.js` separates Node (server) and jsdom (client) test environments under one `npx vitest run` command.
 
 ## Capability Contract
 

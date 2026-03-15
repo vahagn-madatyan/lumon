@@ -54,7 +54,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Bridge Server & Intake Stage** `risk:high` `depends:[]`
+- [x] **S01: Bridge Server & Intake Stage** `risk:high` `depends:[]`
   > After this: the operator triggers a discovery run on a project, n8n executes a viability analysis, the structured result appears in the Lumon dashboard, and the operator approves or rejects it — proven in the real browser with a live n8n instance.
 - [ ] **S02: Research & Business Planning Stages** `risk:medium` `depends:[S01]`
   > After this: after intake approval, the research stage triggers business planning and tech-stack analysis sub-workflows in n8n, and their structured artifacts render as inspectable dossier content in the dashboard.
