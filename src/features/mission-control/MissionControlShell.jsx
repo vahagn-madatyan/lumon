@@ -7,7 +7,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { useLumonActions, useLumonSelector, useLumonState } from "@/lumon/context";
-import { createProjectId } from "@/lumon/model";
+import { createProjectSpawnInput } from "@/lumon/model";
 import { selectFleetMetrics, selectFloorViewModel } from "@/lumon/selectors";
 import SeveranceFloor from "@/severance-floor";
 import { Clock, Shield } from "lucide-react";
@@ -15,125 +15,6 @@ import ArchitectureTab from "./ArchitectureTab";
 import DashboardTab from "./DashboardTab";
 import NewProjectModal from "./NewProjectModal";
 import OrchestrationTab from "./OrchestrationTab";
-
-const ENGINE_LABELS = {
-  claude: "Claude Code",
-  codex: "Codex CLI",
-};
-
-const DEFAULT_PROJECT_PHASE = "Phase 1 — Operator Intake";
-const DEFAULT_PROJECT_DESCRIPTION = "Operator-created project awaiting mission assignment.";
-
-const createProjectAgents = (projectId, name, engineChoice, agentCount) =>
-  Array.from({ length: agentCount }, (_, index) => {
-    const ordinal = String(index + 1).padStart(2, "0");
-
-    return {
-      id: `${projectId}:agent-${ordinal}`,
-      name: `${name} Agent ${ordinal}`,
-      type: engineChoice,
-      planId: `${projectId}-${ordinal}`,
-      task: "Awaiting operator dispatch",
-      wave: 1,
-      status: "queued",
-      progress: 0,
-      tokens: 0,
-      costUsd: 0,
-      elapsedLabel: "—",
-    };
-  });
-
-const createProjectStages = (projectId, agentIds, engineLabel, agentCount) => [
-  {
-    id: `${projectId}:research`,
-    kind: "research",
-    label: "Research",
-    description: `${engineLabel} intake staged for canonical registry review`,
-    icon: "Search",
-    status: "queued",
-    durationLabel: "—",
-    output: "Awaiting operator kickoff",
-  },
-  {
-    id: `${projectId}:plan`,
-    kind: "plan",
-    label: "Plan",
-    description: `Define the first execution wave for ${agentCount} ${engineLabel} agent${agentCount === 1 ? "" : "s"}`,
-    icon: "FileText",
-    status: "queued",
-    durationLabel: "—",
-    output: "Pending stage design",
-  },
-  {
-    id: `${projectId}:wave-1`,
-    kind: "wave",
-    label: "Wave 1",
-    description: `${agentCount} ${engineLabel} agent${agentCount === 1 ? "" : "s"} reserved for the opening wave`,
-    icon: "Layers",
-    status: "queued",
-    durationLabel: "—",
-    output: "Awaiting operator dispatch",
-    agentIds,
-  },
-  {
-    id: `${projectId}:test`,
-    kind: "test",
-    label: "Test Suite",
-    description: "Run verification before operator handoff",
-    icon: "CheckCircle2",
-    status: "queued",
-    durationLabel: "—",
-    output: "Pending",
-  },
-  {
-    id: `${projectId}:merge`,
-    kind: "merge",
-    label: "Merge & Deploy",
-    description: "Operator approval and release handoff",
-    icon: "GitBranch",
-    status: "queued",
-    durationLabel: "—",
-    output: "Pending",
-  },
-];
-
-function buildCanonicalProjectInput(draft, existingProjects) {
-  const projectId = createProjectId(
-    draft.name,
-    existingProjects.map((project) => project.id),
-  );
-  const engineLabel = ENGINE_LABELS[draft.engineChoice] ?? ENGINE_LABELS.claude;
-  const agents = createProjectAgents(projectId, draft.name, draft.engineChoice, draft.agentCount);
-
-  return {
-    id: projectId,
-    name: draft.name,
-    description: draft.description || `${engineLabel} project registry entry created from Mission Control.`,
-    phaseLabel: DEFAULT_PROJECT_PHASE,
-    engineChoice: draft.engineChoice,
-    waves: {
-      current: 1,
-      total: 1,
-    },
-    agents,
-    execution: {
-      id: `engine:${projectId}`,
-      label: `${draft.name} pipeline`,
-      currentStageId: `${projectId}:research`,
-      stages: createProjectStages(
-        projectId,
-        agents.map((agent) => agent.id),
-        engineLabel,
-        draft.agentCount,
-      ),
-    },
-    meta: {
-      source: "mission-control-shell",
-      createdFrom: "new-project-modal",
-      defaultDescription: draft.description ? null : DEFAULT_PROJECT_DESCRIPTION,
-    },
-  };
-}
 
 export default function MissionControlShell() {
   const state = useLumonState();
@@ -154,7 +35,7 @@ export default function MissionControlShell() {
   }, []);
 
   const handleCreateProject = (draft) => {
-    addProject(buildCanonicalProjectInput(draft, state.projects));
+    addProject(createProjectSpawnInput(draft, state.projects));
     setShowNewProject(false);
     return true;
   };

@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { createLumonState } from "../model";
+import { createCanonicalPrebuildStages, createLumonState, createProjectSpawnInput } from "../model";
 import { createSeedLumonState } from "../seed";
 import { lumonActions, lumonReducer } from "../reducer";
 import {
@@ -34,12 +34,73 @@ function StateProbe({ state }) {
   );
 }
 
+const createApprovalContractProject = () => {
+  const agents = [
+    {
+      id: "alpha-agent",
+      name: "Alpha Agent",
+      wave: 1,
+      status: "complete",
+      progress: 100,
+      elapsedLabel: "12m",
+    },
+  ];
+
+  return {
+    id: "alpha",
+    name: "Alpha",
+    phaseLabel: "Phase 1 — Operator Intake",
+    agents,
+    waves: { current: 1, total: 1 },
+    execution: {
+      stages: createCanonicalPrebuildStages({
+        projectId: "alpha",
+        projectName: "Alpha",
+        agents,
+        waveCount: 1,
+        stageOverrides: {
+          intake: {
+            status: "complete",
+            output: "Intake packet captured",
+            approval: { state: "approved" },
+          },
+          research: {
+            status: "complete",
+            output: "Research complete",
+          },
+          plan: {
+            status: "complete",
+            output: "Plan locked",
+            approval: { state: "approved" },
+          },
+          "wave-1": {
+            status: "complete",
+            output: "Wave 1 complete",
+            agentIds: ["alpha-agent"],
+          },
+          verification: {
+            status: "complete",
+            output: "Checks green",
+            approval: { state: "pending", note: "Awaiting verification sign-off" },
+          },
+          handoff: {
+            status: "queued",
+            output: "Pending handoff",
+          },
+        },
+      }),
+    },
+  };
+};
+
 describe("Lumon state contract", () => {
-  it("creates the canonical demo seed and projects dashboard cards through the jsdom harness", () => {
+  it("creates the canonical demo seed and exposes approval-aware execution state through selectors", () => {
     const state = createSeedLumonState();
     const metrics = selectFleetMetrics(state);
     const cards = selectDashboardCards(state);
     const selectedProject = selectSelectedProjectDetail(state);
+    const selectedExecution = state.projects[0].execution;
+    const selectedStageIds = state.projects[0].execution.stages.map((stage) => stage.id);
 
     expect(state.projects).toHaveLength(14);
     expect(state.projects[0]).toMatchObject({
@@ -48,8 +109,22 @@ describe("Lumon state contract", () => {
       createdAt: "2026-01-13T16:00:00.000Z",
       updatedAt: "2026-01-13T16:15:00.000Z",
     });
-    expect(state.projects.every((project) => typeof project.createdAt === "string")).toBe(true);
-    expect(state.projects.every((project) => typeof project.updatedAt === "string")).toBe(true);
+    expect(selectedStageIds).toEqual([
+      "wheely:intake",
+      "wheely:research",
+      "wheely:plan",
+      "wheely:wave-1",
+      "wheely:wave-2",
+      "wheely:verification",
+      "wheely:handoff",
+    ]);
+    expect(selectedExecution).toMatchObject({
+      currentStageId: "wheely:wave-1",
+      currentGateId: "gate:wave-auto-advance",
+      currentApprovalState: "not_required",
+      pipelineStatus: "running",
+      progressPercent: 43,
+    });
     expect(metrics).toMatchObject({
       active: 14,
       total: 33,
@@ -74,6 +149,7 @@ describe("Lumon state contract", () => {
       waveLabel: "Wave 1/2",
       agentCount: 3,
       metrics: { running: 2, queued: 1, complete: 0, failed: 0 },
+      executionStatus: "running",
     });
 
     render(createElement(StateProbe, { state }));
@@ -84,7 +160,7 @@ describe("Lumon state contract", () => {
     expect(screen.getByText("Wheely • 43% • running")).toBeVisible();
   });
 
-  it("reconciles project, agent, and stage selection tuples during canonical state creation", () => {
+  it("canonicalizes legacy stage ids while reconciling project, agent, and stage selection tuples", () => {
     const projects = [
       {
         id: "alpha",
@@ -131,127 +207,150 @@ describe("Lumon state contract", () => {
     expect(recoveredFromValidTuple.selection).toEqual({
       projectId: "beta",
       agentId: "beta-agent",
-      stageId: "beta-stage",
+      stageId: "beta:beta-stage",
     });
-  });
-
-  it("keeps selected project and agent detail synchronized through reducer transitions", () => {
-    let state = createSeedLumonState();
-
-    state = lumonReducer(state, lumonActions.selectAgent("a6"));
-
-    expect(selectSelectedProjectDetail(state)).toMatchObject({
-      id: "policy-gsd",
-      name: "Policy Engine",
-      waveLabel: "Wave 1/1",
-      metrics: { running: 0, queued: 0, complete: 0, failed: 1 },
-    });
-    expect(selectSelectedAgentDetail(state)).toMatchObject({
-      id: "a6",
-      name: "Agent-06",
-      projectId: "policy-gsd",
-      projectName: "Policy Engine",
-      status: "failed",
-      modelLabel: "Codex CLI",
-      costLabel: "$0.21",
-    });
-
-    state = lumonReducer(state, lumonActions.selectProject("tattoo-bot"));
-
-    expect(selectSelectedProjectDetail(state)).toMatchObject({
-      id: "tattoo-bot",
-      name: "Tattoo Bot",
-      metrics: { running: 1, queued: 0, complete: 1, failed: 0 },
-    });
-    expect(selectSelectedAgentDetail(state)).toBeNull();
-  });
-
-  it("keeps project CRUD transitions canonical and selection-safe", () => {
-    let state = createLumonState({
-      projects: [
-        {
-          id: "alpha",
-          name: "Alpha",
-          engineChoice: "claude",
-          createdAt: "2026-02-01T00:00:00.000Z",
-          updatedAt: "2026-02-01T00:00:00.000Z",
-          agents: [{ id: "alpha-agent", name: "Alpha Agent" }],
-          execution: {
-            stages: [{ id: "alpha-stage", label: "Alpha Stage" }],
-          },
-        },
-      ],
-      selection: {
-        projectId: "alpha",
-        agentId: "alpha-agent",
-        stageId: "alpha-stage",
+    expect(recoveredFromValidTuple.projects[1].execution.stages[0]).toMatchObject({
+      id: "beta:beta-stage",
+      meta: {
+        aliasIds: ["beta-stage"],
       },
+    });
+  });
+
+  it("spawns new projects from the same canonical intake-to-handoff taxonomy as seeded projects", () => {
+    let state = createSeedLumonState({
+      projects: [createSeedLumonState().projects.find((project) => project.id === "policy-gsd")],
+      selection: { projectId: "policy-gsd" },
     });
 
     state = lumonReducer(
       state,
       lumonActions.addProject(
-        {
-          name: "Beta Project",
-          description: "Registry test project",
-          engineChoice: "codex",
-          agents: [{ id: "beta-agent", name: "Beta Agent", type: "codex" }],
-          execution: {
-            stages: [{ id: "beta-stage", label: "Beta Stage" }],
+        createProjectSpawnInput(
+          {
+            name: "Registry Orbit",
+            description: "Reload-proof registry creation flow",
+            engineChoice: "codex",
+            agentCount: 3,
           },
-        },
+          state.projects,
+        ),
         { now: "2026-02-02T00:00:00.000Z" },
       ),
     );
 
-    expect(state.projects.map((project) => project.id)).toEqual(["alpha", "beta-project"]);
-    expect(state.selection).toEqual({
-      projectId: "beta-project",
-      agentId: null,
-      stageId: null,
-    });
-    expect(state.projects.find((project) => project.id === "beta-project")).toMatchObject({
+    const seededProject = state.projects.find((project) => project.id === "policy-gsd");
+    const spawnedProject = state.projects.find((project) => project.id === "registry-orbit");
+
+    expect(spawnedProject).toMatchObject({
       engineChoice: "codex",
       createdAt: "2026-02-02T00:00:00.000Z",
       updatedAt: "2026-02-02T00:00:00.000Z",
+      execution: {
+        currentStageId: "registry-orbit:intake",
+        currentGateId: "gate:intake-review",
+        currentApprovalState: "pending",
+        pipelineStatus: "waiting",
+      },
+    });
+    expect(seededProject.execution.stages.map((stage) => [stage.stageKey, stage.approval.id])).toEqual(
+      spawnedProject.execution.stages.map((stage) => [stage.stageKey, stage.approval.id]),
+    );
+    expect(state.selection).toEqual({
+      projectId: "registry-orbit",
+      agentId: null,
+      stageId: null,
+    });
+  });
+
+  it("keeps approval-aware progression, current gate derivation, and selection coherent through reducer transitions", () => {
+    let state = createLumonState({
+      projects: [createApprovalContractProject()],
+      selection: {
+        projectId: "alpha",
+        stageId: "alpha:verification",
+      },
     });
 
-    state = lumonReducer(state, lumonActions.selectAgent("alpha-agent"));
-    state = lumonReducer(state, lumonActions.selectStage("beta-stage"));
-
-    expect(state.selection).toEqual({
-      projectId: "beta-project",
-      agentId: null,
-      stageId: "beta-stage",
+    expect(state.projects[0].execution).toMatchObject({
+      currentStageId: "alpha:verification",
+      currentGateId: "gate:verification-review",
+      currentApprovalState: "pending",
+      pipelineStatus: "waiting",
+      status: "queued",
     });
 
     state = lumonReducer(
       state,
-      lumonActions.updateProject(
-        "beta-project",
-        {
-          name: "Beta Prime",
-          engineChoice: "claude",
+      lumonActions.updateStage("alpha:verification", {
+        approval: {
+          state: "approved",
+          note: "Verification approved",
         },
-        { now: "2026-02-03T00:00:00.000Z" },
-      ),
+      }),
     );
 
-    expect(state.projects.find((project) => project.id === "beta-project")).toMatchObject({
-      id: "beta-project",
-      name: "Beta Prime",
-      engineChoice: "claude",
-      createdAt: "2026-02-02T00:00:00.000Z",
-      updatedAt: "2026-02-03T00:00:00.000Z",
+    expect(state.projects[0].execution).toMatchObject({
+      currentStageId: "alpha:handoff",
+      currentGateId: "gate:handoff-approval",
+      currentApprovalState: "pending",
+      pipelineStatus: "handoff_ready",
+    });
+    expect(state.selection.stageId).toBe("alpha:verification");
+
+    state = lumonReducer(
+      state,
+      lumonActions.updateStage("alpha:handoff", {
+        approval: {
+          state: "rejected",
+          note: "Packet incomplete",
+        },
+      }),
+    );
+
+    expect(state.projects[0].execution).toMatchObject({
+      currentStageId: "alpha:handoff",
+      currentGateId: "gate:handoff-approval",
+      currentApprovalState: "rejected",
+      pipelineStatus: "blocked",
+      status: "queued",
     });
 
-    state = lumonReducer(state, lumonActions.removeProject("beta-project"));
+    state = lumonReducer(
+      state,
+      lumonActions.updateStage("alpha:handoff", {
+        approval: {
+          state: "needs_iteration",
+          note: "Need another operator pass",
+        },
+      }),
+    );
 
-    expect(state.projects.map((project) => project.id)).toEqual(["alpha"]);
-    expect(state.selection).toEqual({
-      projectId: "alpha",
-      agentId: null,
-      stageId: null,
+    expect(state.projects[0].execution).toMatchObject({
+      currentApprovalState: "needs_iteration",
+      pipelineStatus: "blocked",
+    });
+
+    state = lumonReducer(
+      state,
+      lumonActions.updateStage("alpha:handoff", {
+        status: "complete",
+        output: "Handoff packet delivered",
+        approval: {
+          state: "approved",
+          note: "Ready for build handoff",
+        },
+      }),
+    );
+
+    expect(state.projects[0].execution).toMatchObject({
+      currentStageId: "alpha:handoff",
+      currentGateId: "gate:handoff-approval",
+      currentApprovalState: "approved",
+      pipelineStatus: "complete",
+      status: "complete",
+      handoffReady: false,
+      progressPercent: 100,
     });
   });
 
@@ -296,9 +395,9 @@ describe("Lumon state contract", () => {
       projectName: "Policy Engine",
       progressPercent: 50,
       status: "failed",
-      currentStage: { id: "pe-wave-1", status: "failed" },
+      currentStage: { id: "policy-gsd:wave-1", status: "failed" },
     });
-    expect(orchestrationBefore.stages.find((stage) => stage.id === "pe-wave-1")).toMatchObject({
+    expect(orchestrationBefore.stages.find((stage) => stage.id === "policy-gsd:wave-1")).toMatchObject({
       status: "failed",
       agents: [{ id: "a6", name: "Agent-06", status: "failed" }],
     });
@@ -313,13 +412,13 @@ describe("Lumon state contract", () => {
         elapsedLabel: "14m",
       }),
     );
-    state = lumonReducer(state, lumonActions.selectStage("pe-merge"));
+    state = lumonReducer(state, lumonActions.selectStage("policy-gsd:handoff"));
     state = lumonReducer(
       state,
-      lumonActions.updateStage("pe-merge", {
+      lumonActions.updateStage("policy-gsd:handoff", {
         approval: {
-          id: "approval:security-review",
-          label: "Security review",
+          id: "gate:handoff-approval",
+          label: "Handoff approval",
           state: "waiting",
         },
       }),
@@ -329,6 +428,7 @@ describe("Lumon state contract", () => {
     const floorViewAfter = selectFloorViewModel(state);
     const orchestrationAfter = selectOrchestrationInput(state);
     const updatedAgent = selectSelectedAgentDetail(state);
+    const updatedProject = state.projects.find((project) => project.id === "policy-gsd");
 
     expect(floorAfter.find((agent) => agent.id === "a6")).toMatchObject({
       location: "department",
@@ -341,6 +441,12 @@ describe("Lumon state contract", () => {
       status: "running",
       progress: 61,
       elapsedLabel: "14m",
+    });
+    expect(updatedProject.execution).toMatchObject({
+      currentStageId: "policy-gsd:wave-1",
+      pipelineStatus: "running",
+      currentGateId: "gate:wave-auto-advance",
+      currentApprovalState: "not_required",
     });
     expect(floorViewAfter).toMatchObject({
       summary: {
@@ -358,16 +464,16 @@ describe("Lumon state contract", () => {
       },
     });
     expect(orchestrationAfter.status).toBe("running");
-    expect(orchestrationAfter.stages.find((stage) => stage.id === "pe-wave-1")).toMatchObject({
+    expect(orchestrationAfter.stages.find((stage) => stage.id === "policy-gsd:wave-1")).toMatchObject({
       status: "running",
       progress: 61,
     });
     expect(orchestrationAfter.selectedStage).toMatchObject({
-      id: "pe-merge",
+      id: "policy-gsd:handoff",
       approval: {
-        id: "approval:security-review",
-        label: "Security review",
-        state: "waiting",
+        id: "gate:handoff-approval",
+        label: "Handoff approval",
+        state: "pending",
       },
     });
   });

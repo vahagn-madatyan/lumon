@@ -14,17 +14,6 @@ Guidelines:
 
 ## Active
 
-### R003 — Stage-based intake pipeline from idea to build handoff
-- Class: primary-user-loop
-- Status: active
-- Description: Every project must move through an explicit pre-build pipeline before it can be handed to GSD.
-- Why it matters: The product’s value is orchestration and disciplined progression, not loose project notes.
-- Source: user
-- Primary owning slice: M001/S03
-- Supporting slices: M002 (provisional)
-- Validation: mapped
-- Notes: M001 establishes the product model; M002 automates it.
-
 ### R004 — Explicit approval gates between major pre-build stages
 - Class: operability
 - Status: active
@@ -146,17 +135,6 @@ Guidelines:
 - Validation: mapped
 - Notes: M001 proves the surface; M004 makes it real.
 
-### R016 — Dashboard-first stage and agent status visibility
-- Class: operability
-- Status: active
-- Description: The main dashboard must prioritize pipeline stage state and agent state across projects.
-- Why it matters: The user explicitly wants at-a-glance operational awareness over pure terminal immersion or finance-first views.
-- Source: user
-- Primary owning slice: M001/S03
-- Supporting slices: M001/S05, M001/S06, M004 (provisional)
-- Validation: mapped
-- Notes: This is the primary information hierarchy for the product.
-
 ### R017 — One auto-retry on failure, then pause and escalate
 - Class: continuity
 - Status: active
@@ -225,6 +203,17 @@ Guidelines:
 - Validation: validated
 - Notes: Proven in M001/S02 through canonical project creation, versioned local persistence, selection-safe restore, and live browser reload verification.
 
+### R003 — Stage-based intake pipeline from idea to build handoff
+- Class: primary-user-loop
+- Status: validated
+- Description: Every project must move through an explicit pre-build pipeline before it can be handed to GSD.
+- Why it matters: The product’s value is orchestration and disciplined progression, not loose project notes.
+- Source: user
+- Primary owning slice: M001/S03
+- Supporting slices: M002 (provisional)
+- Validation: validated
+- Notes: M001/S03 proves a canonical intake→handoff stage model, approval-aware progression, reload-safe persistence, and live dashboard/orchestration visibility across the real app.
+
 ### R012 — Execution-engine selection per project
 - Class: core-capability
 - Status: validated
@@ -235,6 +224,17 @@ Guidelines:
 - Supporting slices: M003 (provisional)
 - Validation: validated
 - Notes: M001/S02 proves engine choice is stored, rendered, and restored per project; M003 will consume it for real handoff behavior.
+
+### R016 — Dashboard-first stage and agent status visibility
+- Class: operability
+- Status: validated
+- Description: The main dashboard must prioritize pipeline stage state and agent state across projects.
+- Why it matters: The user explicitly wants at-a-glance operational awareness over pure terminal immersion or finance-first views.
+- Source: user
+- Primary owning slice: M001/S03
+- Supporting slices: M001/S05, M001/S06, M004 (provisional)
+- Validation: validated
+- Notes: M001/S03 proves the dashboard and orchestration surfaces now lead with shared stage, gate, and approval-aware status truth while agent detail remains secondary.
 
 
 ## Deferred
@@ -346,7 +346,7 @@ Guidelines:
 |---|---|---|---|---|---|
 | R001 | primary-user-loop | validated | M001/S01 | M001/S03, M001/S05, M001/S06 | validated |
 | R002 | core-capability | validated | M001/S02 | M001/S06 | validated |
-| R003 | primary-user-loop | active | M001/S03 | M002 (provisional) | mapped |
+| R003 | primary-user-loop | validated | M001/S03 | M002 (provisional) | validated |
 | R004 | operability | active | M002 (provisional) | M001/S03 | mapped |
 | R005 | core-capability | active | M002 (provisional) | none | unmapped |
 | R006 | core-capability | active | M002 (provisional) | none | unmapped |
@@ -359,7 +359,7 @@ Guidelines:
 | R013 | integration | active | M003 (provisional) | M004 (provisional) | unmapped |
 | R014 | quality-attribute | active | M003 (provisional) | M004 (provisional) | unmapped |
 | R015 | failure-visibility | active | M004 (provisional) | M001/S05 | mapped |
-| R016 | operability | active | M001/S03 | M001/S05, M001/S06, M004 (provisional) | mapped |
+| R016 | operability | validated | M001/S03 | M001/S05, M001/S06, M004 (provisional) | validated |
 | R017 | continuity | active | M004 (provisional) | none | unmapped |
 | R018 | compliance/security | active | M002 (provisional) | M005 (provisional) | unmapped |
 | R019 | integration | active | M002 (provisional) | M001/S03 | unmapped |
@@ -376,7 +376,7 @@ Guidelines:
 
 ## Coverage Summary
 
-- Active requirements: 17
+- Active requirements: 15
 - Mapped to slices or provisional milestone owners: 20
-- Validated: 3
+- Validated: 5
 - Unmapped active requirements: 0

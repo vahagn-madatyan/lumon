@@ -1,11 +1,4 @@
-import {
-  createApprovalState,
-  createLumonState,
-  createPipelineStage,
-  createProject,
-  createProjectId,
-  reconcileSelection,
-} from "./model";
+import { createLumonState, createProject, createProjectId, reconcileSelection } from "./model";
 
 export const lumonActionTypes = {
   hydrate: "lumon/hydrate",
@@ -68,6 +61,8 @@ const touchProject = (project, changes = {}, now) =>
       id: project.id,
       createdAt: project.createdAt,
       updatedAt: now,
+      waves: changes.waves ? { ...project.waves, ...changes.waves } : project.waves,
+      execution: changes.execution ? { ...project.execution, ...changes.execution } : project.execution,
       meta: changes.meta ? { ...project.meta, ...changes.meta } : project.meta,
     },
     { now },
@@ -94,27 +89,18 @@ const updateProjectAgent = (project, agentId, changes, now) => {
   return changed ? touchProject(project, { agents }, now) : project;
 };
 
-const mergeStageChanges = (stage, changes = {}) => {
-  const approval =
-    "approval" in changes
-      ? createApprovalState({ ...stage.approval, ...changes.approval })
-      : stage.approval;
-
-  const merged = {
-    ...stage,
-    ...changes,
-    approval,
-    agentIds: changes.agentIds ? [...changes.agentIds] : stage.agentIds,
-    meta: changes.meta ? { ...stage.meta, ...changes.meta } : stage.meta,
-  };
-
-  return createPipelineStage(merged);
-};
+const mergeStageChanges = (stage, changes = {}) => ({
+  ...stage,
+  ...changes,
+  approval: "approval" in changes ? { ...stage.approval, ...changes.approval } : stage.approval,
+  agentIds: changes.agentIds ? [...changes.agentIds] : [...stage.agentIds],
+  meta: changes.meta ? { ...stage.meta, ...changes.meta } : stage.meta,
+});
 
 const updateProjectStage = (project, stageId, changes, now) => {
   let changed = false;
   const stages = project.execution.stages.map((stage) => {
-    if (stage.id !== stageId) {
+    if (stage.id !== stageId && !stage.meta?.aliasIds?.includes(stageId)) {
       return stage;
     }
 
@@ -132,10 +118,6 @@ const updateProjectStage = (project, stageId, changes, now) => {
       execution: {
         ...project.execution,
         stages,
-        currentStageId:
-          stageId === project.execution.currentStageId
-            ? changes.currentStageId ?? changes.id ?? project.execution.currentStageId
-            : project.execution.currentStageId,
       },
     },
     now,
@@ -258,7 +240,9 @@ export function lumonReducer(state, action) {
       }
 
       const project = state.projects.find((candidate) =>
-        candidate.execution.stages.some((stage) => stage.id === stageId),
+        candidate.execution.stages.some(
+          (stage) => stage.id === stageId || stage.meta?.aliasIds?.includes(stageId),
+        ),
       );
       if (!project) {
         return state;

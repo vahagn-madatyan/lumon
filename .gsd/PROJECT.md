@@ -15,10 +15,12 @@ One operator can see where every project stands, understand what each agent is d
 - Vite + React control shell now runs through a canonical `src/lumon/*` state spine with reducer, provider, seed data, shared selectors, and provider-bound persistence.
 - The mission-control UI has been split into provider-backed dashboard, orchestration, architecture, terminal, and modal surface modules instead of one monolith.
 - Canonical project creation now flows through the real shell: new projects get stable IDs/timestamps, a persisted engine choice, immediate selection, and reload-safe restore from the versioned local registry envelope.
+- Projects now share one canonical intake → handoff pipeline with stable stage and gate IDs, approval-aware progression, and reload-safe execution reconciliation for seeded, spawned, and rehydrated state.
+- The dashboard and orchestration surfaces now lead with the same selector-owned stage, gate, approval, and handoff-readiness truth instead of UI-local status summaries.
 - Empty persisted registries are treated as valid state, and rendered mission-control surfaces now guard against missing seeded selection assumptions.
 - The Severance-inspired floor now renders from deterministic seeded layout data and the same project/agent truth as the dashboard.
-- Vitest + React Testing Library contract/integration tests now cover reducer selectors, persistence round-trip behavior, and rendered create/remount registry restore.
-- Still missing: explicit pre-build stage/approval progression, dossier/handoff packet views, Severance floor live-state integration beyond seeded presentation, repo/GSD integrations, and live runtime telemetry.
+- Vitest + React Testing Library contract/integration tests now cover reducer selectors, persistence round-trip behavior, rendered create/remount registry restore, and stage-first pipeline visibility.
+- Still missing: dossier/handoff packet views, Severance floor live-state integration beyond seeded presentation, repo/GSD integrations, and live runtime telemetry.
 
 ## Architecture / Key Patterns
 

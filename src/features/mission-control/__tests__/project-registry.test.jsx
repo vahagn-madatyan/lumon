@@ -9,7 +9,7 @@ describe("MissionControl project registry", () => {
     window.localStorage.clear();
   });
 
-  it("creates canonical projects, persists engine choice, and restores selection on remount", async () => {
+  it("creates canonical projects and preserves stage-first pipeline state across reload", async () => {
     const initialState = createLumonState({ projects: [], selection: {} });
     const firstRender = render(<MissionControl initialState={initialState} />);
 
@@ -37,6 +37,13 @@ describe("MissionControl project registry", () => {
     expect(screen.getByTestId("selected-project-engine")).toHaveTextContent("Codex CLI");
     expect(screen.getByTestId("dashboard-project-engine-registry-orbit")).toHaveTextContent("Codex CLI");
     expect(screen.getAllByText(/Reload-proof registry creation flow/i)).toHaveLength(2);
+    expect(screen.getByTestId("selected-project-pipeline-status")).toHaveTextContent("Waiting");
+    expect(screen.getByTestId("selected-project-current-stage")).toHaveTextContent("Intake");
+    expect(screen.getByTestId("selected-project-current-gate")).toHaveTextContent("Intake approval");
+    expect(screen.getByTestId("selected-project-current-approval")).toHaveTextContent("Pending approval");
+    expect(screen.getByTestId("dashboard-project-current-stage-registry-orbit")).toHaveTextContent("Intake");
+    expect(screen.getByTestId("dashboard-project-current-gate-registry-orbit")).toHaveTextContent("Intake approval");
+    expect(screen.getByTestId("dashboard-project-approval-state-registry-orbit")).toHaveTextContent("Pending approval");
 
     await waitFor(() => {
       const envelope = JSON.parse(window.localStorage.getItem(LUMON_REGISTRY_STORAGE_KEY) ?? "null");
@@ -45,6 +52,12 @@ describe("MissionControl project registry", () => {
         id: "registry-orbit",
         name: "Registry Orbit",
         engineChoice: "codex",
+        execution: {
+          currentStageId: "registry-orbit:intake",
+          currentGateId: "gate:intake-review",
+          currentApprovalState: "pending",
+          pipelineStatus: "waiting",
+        },
       });
       expect(envelope?.state?.selection).toEqual({
         projectId: "registry-orbit",
@@ -59,7 +72,18 @@ describe("MissionControl project registry", () => {
     expect(screen.getByRole("heading", { name: "Registry Orbit" })).toBeInTheDocument();
     expect(screen.getByTestId("selected-project-engine")).toHaveTextContent("Codex CLI");
     expect(screen.getByTestId("dashboard-project-engine-registry-orbit")).toHaveTextContent("Codex CLI");
+    expect(screen.getByTestId("selected-project-pipeline-status")).toHaveTextContent("Waiting");
+    expect(screen.getByTestId("selected-project-current-stage")).toHaveTextContent("Intake");
+    expect(screen.getByTestId("selected-project-current-gate")).toHaveTextContent("Intake approval");
+    expect(screen.getByTestId("selected-project-current-approval")).toHaveTextContent("Pending approval");
     expect(screen.queryByTestId("dashboard-empty-registry")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: /orchestration/i }));
+
+    expect(screen.getByTestId("orchestration-pipeline-status")).toHaveTextContent("Waiting");
+    expect(screen.getByTestId("orchestration-current-stage-label")).toHaveTextContent("Intake");
+    expect(screen.getByTestId("orchestration-current-gate-label")).toHaveTextContent("Intake approval");
+    expect(screen.getByTestId("orchestration-current-approval-state")).toHaveTextContent("Pending approval");
   });
 
   it("renders a safe create-first shell when the persisted registry is intentionally empty", () => {

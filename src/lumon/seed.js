@@ -1,4 +1,8 @@
-import { createLumonState } from "./model";
+import {
+  LUMON_PREBUILD_STAGE_KEYS,
+  createCanonicalPrebuildStages,
+  createLumonState,
+} from "./model";
 
 const RAW_PROJECTS = [
   {
@@ -860,51 +864,19 @@ const RAW_PIPELINES = [
   }
 ];
 
-const inferStageKind = (step) => {
-  if (step.id.includes("wave")) return "wave";
-  if (step.id.includes("init")) return "init";
-  if (step.id.includes("research")) return "research";
-  if (step.id.includes("plan")) return "plan";
-  if (step.id.includes("test")) return "test";
-  if (step.id.includes("merge")) return "merge";
-  return "stage";
-};
+const inferStageKey = (step) => {
+  const id = String(step.id ?? "").toLowerCase();
 
-const buildApproval = (kind, status) => {
-  if (kind === "merge") {
-    return {
-      id: "approval:operator-review",
-      label: "Operator review",
-      state: status === "complete" ? "approved" : "pending",
-    };
+  if (id.includes("wave")) {
+    const match = id.match(/wave-(\d+)/);
+    return `wave-${match ? Number.parseInt(match[1], 10) : 1}`;
   }
-
-  if (kind === "test") {
-    return {
-      id: "approval:qa-gate",
-      label: "QA gate",
-      state: status === "complete" ? "approved" : "pending",
-    };
-  }
-
-  if (kind === "wave") {
-    return {
-      id: "approval:auto-advance",
-      label: "Auto advance",
-      state:
-        status === "complete"
-          ? "ready"
-          : status === "failed"
-            ? "blocked"
-            : "automatic",
-    };
-  }
-
-  return {
-    id: "approval:not-required",
-    label: "No approval required",
-    state: "not_required",
-  };
+  if (id.includes("init")) return LUMON_PREBUILD_STAGE_KEYS.intake;
+  if (id.includes("research")) return LUMON_PREBUILD_STAGE_KEYS.research;
+  if (id.includes("plan")) return LUMON_PREBUILD_STAGE_KEYS.plan;
+  if (id.includes("test")) return LUMON_PREBUILD_STAGE_KEYS.verification;
+  if (id.includes("merge") || id.includes("handoff")) return LUMON_PREBUILD_STAGE_KEYS.handoff;
+  return null;
 };
 
 const deriveWaveStatus = (agents) => {
@@ -927,103 +899,61 @@ const summarizeWaveOutput = (agents) => {
     .join(" · ");
 };
 
-const buildGeneratedStages = (project) => {
-  const stages = [
-    {
-      id: `${project.id}:gsd-init`,
-      kind: "init",
-      label: "GSD Init",
+const buildGeneratedStageOverrides = (project) => {
+  const stageOverrides = {
+    [LUMON_PREBUILD_STAGE_KEYS.intake]: {
       description: "Initialize .planning/ structure",
-      icon: "GitBranch",
       status: "complete",
-      durationLabel: "—",
       output: "Seed contract initialized",
-      approval: buildApproval("init", "complete"),
+      approval: { state: "approved" },
+      meta: { aliasIds: [`${project.id}:gsd-init`] },
     },
-    {
-      id: `${project.id}:research`,
-      kind: "research",
-      label: "Research",
+    [LUMON_PREBUILD_STAGE_KEYS.research]: {
       description: `Analysis seeded from ${project.phase}`,
-      icon: "Search",
       status: "complete",
-      durationLabel: "—",
       output: `${project.agents.length} seeded agent${project.agents.length === 1 ? "" : "s"}`,
-      approval: buildApproval("research", "complete"),
+      approval: { state: "approved" },
     },
-    {
-      id: `${project.id}:plan`,
-      kind: "plan",
-      label: "Plan",
+    [LUMON_PREBUILD_STAGE_KEYS.plan]: {
       description: "Canonical pipeline shell projected from demo state",
-      icon: "FileText",
       status: "complete",
-      durationLabel: "—",
       output: `${project.waves.total} wave${project.waves.total === 1 ? "" : "s"} defined`,
-      approval: buildApproval("plan", "complete"),
+      approval: { state: "approved" },
     },
-  ];
+    [LUMON_PREBUILD_STAGE_KEYS.verification]: {
+      description: "Contract verification gate",
+      output: "Pending verification",
+    },
+    [LUMON_PREBUILD_STAGE_KEYS.handoff]: {
+      description: "Operator approval and release handoff",
+      output: "Pending handoff",
+    },
+  };
 
   for (let waveNumber = 1; waveNumber <= project.waves.total; waveNumber += 1) {
+    const stageKey = `wave-${waveNumber}`;
     const waveAgents = project.agents.filter((agent) => agent.wave === waveNumber);
-    const status = deriveWaveStatus(waveAgents);
-    const label = `Wave ${waveNumber}`;
-    const description =
-      waveAgents.length > 0
-        ? `Parallel: ${waveAgents.map((agent) => agent.name).join(" + ")}`
-        : `Wave ${waveNumber} reserved for downstream planning`;
-
-    stages.push({
-      id: `${project.id}:wave-${waveNumber}`,
-      kind: "wave",
-      label,
-      description,
-      icon: "Layers",
-      status,
+    stageOverrides[stageKey] = {
+      status: deriveWaveStatus(waveAgents),
       durationLabel: waveAgents[0]?.elapsed ?? "—",
       output: summarizeWaveOutput(waveAgents),
       agentIds: waveAgents.map((agent) => agent.id),
-      approval: buildApproval("wave", status),
-    });
+    };
   }
 
-  stages.push(
-    {
-      id: `${project.id}:test`,
-      kind: "test",
-      label: "Test Suite",
-      description: "Contract verification gate",
-      icon: "CheckCircle2",
-      status: "queued",
-      durationLabel: "—",
-      output: "Pending",
-      approval: buildApproval("test", "queued"),
-    },
-    {
-      id: `${project.id}:merge`,
-      kind: "merge",
-      label: "Merge & Deploy",
-      description: "Operator approval and release handoff",
-      icon: "GitBranch",
-      status: "queued",
-      durationLabel: "—",
-      output: "Pending",
-      approval: buildApproval("merge", "queued"),
-    },
-  );
-
-  return stages;
+  return stageOverrides;
 };
 
-const buildDetailedStages = (project, pipeline) => {
+const buildDetailedStageOverrides = (project, pipeline) => {
   const agentIdsByName = new Map(project.agents.map((agent) => [agent.name, agent.id]));
 
-  return pipeline.steps.map((step) => {
-    const kind = inferStageKind(step);
-    return {
-      id: step.id,
-      kind,
-      label: step.label,
+  return pipeline.steps.reduce((overrides, step) => {
+    const stageKey = inferStageKey(step);
+    if (!stageKey) {
+      return overrides;
+    }
+
+    overrides[stageKey] = {
       description: step.desc,
       icon: step.icon,
       status: step.status,
@@ -1032,25 +962,40 @@ const buildDetailedStages = (project, pipeline) => {
       agentIds: (step.agents ?? [])
         .map((agent) => agentIdsByName.get(agent.label))
         .filter(Boolean),
-      approval: buildApproval(kind, step.status),
+      approval:
+        step.status === "complete" &&
+        [
+          LUMON_PREBUILD_STAGE_KEYS.intake,
+          LUMON_PREBUILD_STAGE_KEYS.plan,
+          LUMON_PREBUILD_STAGE_KEYS.verification,
+          LUMON_PREBUILD_STAGE_KEYS.handoff,
+        ].includes(stageKey)
+          ? { state: "approved" }
+          : undefined,
+      meta: {
+        aliasIds: [step.id],
+      },
     };
-  });
+
+    return overrides;
+  }, {});
 };
 
 const buildProjectExecution = (project) => {
   const pipeline = RAW_PIPELINES.find((candidate) => candidate.id === project.id);
-  const stages = pipeline ? buildDetailedStages(project, pipeline) : buildGeneratedStages(project);
-  const currentStageId =
-    stages.find((stage) => stage.status === "failed" || stage.status === "running")?.id ??
-    stages.find((stage) => stage.status !== "complete")?.id ??
-    stages[0]?.id ??
-    null;
+  const stageOverrides = pipeline ? buildDetailedStageOverrides(project, pipeline) : buildGeneratedStageOverrides(project);
 
   return {
     id: `engine:${project.id}`,
     label: `${project.name} pipeline`,
-    currentStageId,
-    stages,
+    stages: createCanonicalPrebuildStages({
+      projectId: project.id,
+      projectName: project.name,
+      engineChoice: inferSeedEngineChoice(project),
+      agents: project.agents,
+      waveCount: project.waves.total,
+      stageOverrides,
+    }),
   };
 };
 

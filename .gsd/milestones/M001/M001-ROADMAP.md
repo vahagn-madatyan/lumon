@@ -56,7 +56,7 @@ This milestone is complete only when all are true:
 - [x] **S02: Project registry and persistence** `risk:high` `depends:[S01]`
   > After this: the operator can create projects, choose Claude Code or Codex, and recover the same fleet after reload.
 
-- [ ] **S03: Pipeline board and approval model** `risk:medium` `depends:[S01,S02]`
+- [x] **S03: Pipeline board and approval model** `risk:medium` `depends:[S01,S02]`
   > After this: each project shows an explicit staged journey from intake to GSD handoff with approval-gated progression.
 
 - [ ] **S04: Project dossier and handoff packet views** `risk:medium` `depends:[S02,S03]`
