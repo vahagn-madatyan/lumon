@@ -168,18 +168,18 @@ Guidelines:
 - Validation: unmapped
 - Notes: M001 should shape stage contracts so n8n can attach cleanly later.
 
+## Validated
+
 ### R020 — Severance-inspired control-room presentation
 - Class: differentiator
-- Status: active
+- Status: validated
 - Description: Lumon must preserve and deepen the Severance-like atmosphere as part of the operator experience.
 - Why it matters: The visual identity is part of what makes the product feel like Lumon rather than a generic dashboard.
 - Source: user
 - Primary owning slice: M001/S05
 - Supporting slices: M001/S01, M001/S06
-- Validation: mapped
-- Notes: Style should serve clarity, not obscure state.
-
-## Validated
+- Validation: validated
+- Notes: M001/S05 proves the Severance floor renders pipeline-aware department room tones, persistent shell indicators for stuck projects, and pipeline diagnostics panels — all maintaining the control-room aesthetic while making approval-aware pipeline state legible.
 
 ### R001 — Single-operator mission control dashboard
 - Class: primary-user-loop
@@ -363,7 +363,7 @@ Guidelines:
 | R017 | continuity | active | M004 (provisional) | none | unmapped |
 | R018 | compliance/security | active | M002 (provisional) | M005 (provisional) | unmapped |
 | R019 | integration | active | M002 (provisional) | M001/S03 | unmapped |
-| R020 | differentiator | active | M001/S05 | M001/S01, M001/S06 | mapped |
+| R020 | differentiator | validated | M001/S05 | M001/S01, M001/S06 | validated |
 | R021 | admin/support | deferred | none | none | unmapped |
 | R022 | compliance/security | deferred | M006 (provisional) | none | unmapped |
 | R023 | admin/support | deferred | M006 (provisional) | none | unmapped |
@@ -376,7 +376,7 @@ Guidelines:
 
 ## Coverage Summary
 
-- Active requirements: 15
+- Active requirements: 14
 - Mapped to slices or provisional milestone owners: 20
-- Validated: 5
+- Validated: 6
 - Unmapped active requirements: 0

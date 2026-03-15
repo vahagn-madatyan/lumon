@@ -66,6 +66,9 @@ const STATUS_BADGE_LABELS = {
   running: "running",
   complete: "complete",
   queued: "queued",
+  waiting: "waiting",
+  blocked: "blocked",
+  handoff_ready: "Handoff ready",
 };
 
 const hashSeed = (value) => {
@@ -377,21 +380,73 @@ function EmptyDeskCluster({ agents }) {
 }
 
 // ── DeptRoom — irregular-shaped department ───────────────────────
+const DIAGNOSTICS_TONE_COLORS = {
+  running: "#00e59b",
+  complete: "#3fb950",
+  waiting: "#f0a030",
+  blocked: "#f85149",
+  handoff_ready: "#58a6ff",
+  queued: "#52525b",
+};
+
+const ROOM_TONE_BACKGROUNDS = {
+  running: "rgba(0,229,155,0.06)",
+  waiting: "rgba(240,160,48,0.06)",
+  blocked: "rgba(248,81,73,0.06)",
+  handoff_ready: "rgba(88,166,255,0.06)",
+  complete: "rgba(63,185,80,0.04)",
+};
+const ROOM_TONE_BORDERS = {
+  running: "rgba(0,229,155,0.3)",
+  waiting: "rgba(240,160,48,0.3)",
+  blocked: "rgba(248,81,73,0.3)",
+  handoff_ready: "rgba(88,166,255,0.3)",
+  complete: "rgba(63,185,80,0.2)",
+};
+
+function PersistentShellIndicator({ diagnostics, toneColor }) {
+  if (!diagnostics) return null;
+  return (
+    <div className="flex flex-col items-center gap-1 py-2" data-testid="dept-persistent-shell">
+      <div className="w-3 h-3 rounded-full animate-pulse" style={{ background: toneColor, boxShadow: `0 0 10px ${toneColor}60` }} />
+      <div className="font-mono text-[6px] uppercase tracking-[0.15em]" style={{ color: toneColor }}>
+        {diagnostics.pipelineLabel}
+      </div>
+      <div className="font-mono text-[5px] text-zinc-600 text-center leading-tight max-w-[140px]">
+        {diagnostics.pipelineSummary}
+      </div>
+      {diagnostics.currentStageLabel && diagnostics.currentStageLabel !== "—" && (
+        <div className="font-mono text-[5px] text-zinc-700 text-center">
+          Stage: {diagnostics.currentStageLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Dept({ department, hoveredAgentId, onHoverAgent, onLeaveAgent, onSelectAgent, onSelectProject }) {
-  const sc = department.status === "running"
-    ? "#00e59b"
-    : department.status === "complete"
-      ? "#3fb950"
-      : department.status === "failed"
-        ? "#f85149"
-        : "#52525b";
+  const diag = department.diagnostics;
+  const pipelineStatus = diag?.pipelineStatus ?? department.status;
+  const sc = pipelineStatus === "failed"
+    ? "#f85149"
+    : DIAGNOSTICS_TONE_COLORS[pipelineStatus] ?? "#52525b";
   const deskAgents = department.agents.filter((agent) => agent.status === "running");
   const awayAgents = department.agents.filter((agent) => agent.location === "amenity");
+  const isPersistentShell = department.presence?.persistentShell === true;
+
+  const roomBg = department.isSelected
+    ? "rgba(6,95,70,0.22)"
+    : ROOM_TONE_BACKGROUNDS[pipelineStatus] ?? "rgba(9,9,11,0.7)";
+  const roomBorder = department.isSelected
+    ? "2px solid rgba(16,185,129,0.55)"
+    : ROOM_TONE_BORDERS[pipelineStatus]
+      ? `2px solid ${ROOM_TONE_BORDERS[pipelineStatus]}`
+      : "2px solid rgba(63,63,70,0.4)";
 
   return (
     <div className="absolute" style={{ left: department.room.x, top: department.room.y, width: department.room.w, height: department.room.h }}>
-      <div className="absolute inset-0 rounded" style={{ background: department.isSelected ? "rgba(6,95,70,0.22)" : "rgba(9,9,11,0.7)", border: department.isSelected ? "2px solid rgba(16,185,129,0.55)" : "2px solid rgba(63,63,70,0.4)" }} />
-      <div className="absolute h-px" style={{ top: 6, left: 20, right: 20, background: "rgba(34,211,238,0.18)", boxShadow: "0 0 10px rgba(34,211,238,0.1)", animation: "flicker 6s ease-in-out infinite" }} />
+      <div className="absolute inset-0 rounded" style={{ background: roomBg, border: roomBorder }} />
+      <div className="absolute h-px" style={{ top: 6, left: 20, right: 20, background: `${sc}30`, boxShadow: `0 0 10px ${sc}18`, animation: "flicker 6s ease-in-out infinite" }} />
       <div className="absolute bottom-[-2px] left-1/2 -translate-x-1/2" style={{ width: 24, height: 4, background: "#09090b", borderRadius: "0 0 2px 2px" }} />
       <div className="absolute -top-6 left-2 flex items-center gap-1.5">
         <div className="w-2 h-2 rounded-full" style={{ background: sc, boxShadow: `0 0 5px ${sc}80` }} />
@@ -405,6 +460,15 @@ function Dept({ department, hoveredAgentId, onHoverAgent, onLeaveAgent, onSelect
           {department.name}
         </button>
         <span className="font-mono text-[6px] text-zinc-600 ml-1">{department.agentCount} agents</span>
+        {diag && (
+          <span
+            className="font-mono text-[6px] ml-1 tracking-wider uppercase"
+            style={{ color: sc }}
+            data-testid={`dept-pipeline-status-${department.id}`}
+          >
+            {diag.pipelineLabel}
+          </span>
+        )}
       </div>
       <div className="absolute" style={{ top: 16, left: 14 }}>
         {deskAgents.length > 0 && (
@@ -416,6 +480,9 @@ function Dept({ department, hoveredAgentId, onHoverAgent, onLeaveAgent, onSelect
             onLeaveAgent={onLeaveAgent}
             onSelectAgent={onSelectAgent}
           />
+        )}
+        {isPersistentShell && deskAgents.length === 0 && (
+          <PersistentShellIndicator diagnostics={diag} toneColor={sc} />
         )}
         <EmptyDeskCluster agents={awayAgents} />
       </div>
@@ -615,6 +682,59 @@ function AmenityRoom({ label, sublabel, x, y, w, h, items, color }) {
   );
 }
 
+// ── Selected Project Panel (diagnostics-driven) ─────────────────
+function SelectedProjectPanel({ selectedProject, diagnostics }) {
+  const diag = diagnostics;
+  const hasProject = selectedProject != null;
+  const statusLabel = diag ? formatFloorStatus(diag.pipelineStatus) : hasProject ? formatFloorStatus(selectedProject.status) : "UNSELECTED";
+  const toneColor = diag ? (DIAGNOSTICS_TONE_COLORS[diag.pipelineStatus] ?? "#52525b") : "#52525b";
+
+  return (
+    <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+      <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-600">Selected project</div>
+      <div className="mt-1 text-[11px] font-bold text-zinc-200" data-testid="severance-floor-selected-project">
+        {hasProject ? selectedProject.name : "No project selected"}
+      </div>
+      <div className="mt-1 text-[9px] text-zinc-500">
+        {hasProject ? `${selectedProject.phaseLabel} · ${selectedProject.waveLabel}` : "Pick a department from the dashboard or floor."}
+      </div>
+      <div className="mt-1 flex items-center gap-2">
+        <div className="w-1.5 h-1.5 rounded-full" style={{ background: toneColor, boxShadow: `0 0 4px ${toneColor}60` }} />
+        <span
+          className="text-[8px] uppercase tracking-[0.12em] font-bold"
+          style={{ color: toneColor }}
+          data-testid="severance-floor-selected-project-status"
+        >
+          {statusLabel}
+        </span>
+      </div>
+      {diag && hasProject && (
+        <div className="mt-1.5 space-y-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[7px] text-zinc-600 uppercase tracking-wider">Stage</span>
+            <span className="text-[8px] text-zinc-400" data-testid="severance-floor-selected-project-stage">{diag.currentStageLabel}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[7px] text-zinc-600 uppercase tracking-wider">Gate</span>
+            <span className="text-[8px] text-zinc-400" data-testid="severance-floor-selected-project-gate">{diag.currentGateLabel}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[7px] text-zinc-600 uppercase tracking-wider">Approval</span>
+            <span className="text-[8px] text-zinc-400" data-testid="severance-floor-selected-project-approval">{diag.currentApprovalSummary}</span>
+          </div>
+          {diag.currentApprovalNote && (
+            <div className="text-[7px] text-zinc-500 italic pl-1" data-testid="severance-floor-selected-project-approval-note">{diag.currentApprovalNote}</div>
+          )}
+          <div className="mt-1 h-[2px] rounded-full bg-zinc-800 overflow-hidden">
+            <div className="h-full rounded-full transition-all" style={{ width: `${diag.progressPercent}%`, background: toneColor }} />
+          </div>
+          <div className="text-[6px] text-zinc-600">{diag.completedCount}/{diag.totalCount} stages · {diag.progressPercent}%</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ──────────────────────────────────────────────
 export default function SeveranceFloor({
   floor = {
@@ -767,6 +887,15 @@ export default function SeveranceFloor({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="font-mono text-[8px] text-zinc-500">{floor.summary.runningCount} RUN</span></div>
+              {floor.summary.waitingCount > 0 && (
+                <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full" style={{ background: "#f0a030" }} /><span className="font-mono text-[8px]" style={{ color: "#f0a030" }} data-testid="severance-floor-waiting-count">{floor.summary.waitingCount} WAITING</span></div>
+              )}
+              {floor.summary.blockedCount > 0 && (
+                <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-red-400" /><span className="font-mono text-[8px] text-red-400" data-testid="severance-floor-blocked-count">{floor.summary.blockedCount} BLOCKED</span></div>
+              )}
+              {floor.summary.handoffReadyCount > 0 && (
+                <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full" style={{ background: "#58a6ff" }} /><span className="font-mono text-[8px]" style={{ color: "#58a6ff" }} data-testid="severance-floor-handoff-ready-count">{floor.summary.handoffReadyCount} HANDOFF</span></div>
+              )}
               <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" /><span className="font-mono text-[8px] text-red-400"><span data-testid="severance-floor-break-room-count">{floor.summary.failedCount}</span> BREAK ROOM</span></div>
               <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-zinc-500" /><span className="font-mono text-[8px] text-zinc-600">{floor.summary.awayCount} IDLE</span></div>
             </div>
@@ -777,12 +906,10 @@ export default function SeveranceFloor({
           </div>
         </div>
         <div className="grid gap-2 border-b border-zinc-900/80 bg-zinc-950/80 px-5 py-2 lg:grid-cols-3">
-          <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2">
-            <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-600">Selected project</div>
-            <div className="mt-1 text-[11px] font-bold text-zinc-200" data-testid="severance-floor-selected-project">{floor.selectedProject?.name ?? "No project selected"}</div>
-            <div className="mt-1 text-[9px] text-zinc-500">{floor.selectedProject ? `${floor.selectedProject.phaseLabel} · ${floor.selectedProject.waveLabel}` : "Pick a department from the dashboard or floor."}</div>
-            <div className="mt-1 text-[8px] uppercase tracking-[0.12em] text-zinc-600" data-testid="severance-floor-selected-project-status">{floor.selectedProject ? formatFloorStatus(floor.selectedProject.status) : "UNSELECTED"}</div>
-          </div>
+          <SelectedProjectPanel
+            selectedProject={floor.selectedProject}
+            diagnostics={floor.selectedProjectDiagnostics}
+          />
           <div className="rounded border border-zinc-800 bg-zinc-900/60 px-3 py-2">
             <div className="text-[8px] uppercase tracking-[0.16em] text-zinc-600">Selected agent</div>
             <div className="mt-1 text-[11px] font-bold text-zinc-200" data-testid="severance-floor-selected-agent">{floor.selectedAgent?.name ?? "No agent selected"}</div>

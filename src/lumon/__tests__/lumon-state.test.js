@@ -9,10 +9,11 @@ import {
   createLumonState,
   createProjectSpawnInput,
 } from "../model";
-import { createSeedLumonState } from "../seed";
+import { createSeedLumonState, lumonFloorLayoutSeed } from "../seed";
 import { lumonActions, lumonReducer } from "../reducer";
 import {
   selectDashboardCards,
+  selectDashboardProjects,
   selectFleetMetrics,
   selectFloorAgents,
   selectFloorViewModel,
@@ -97,6 +98,100 @@ const createApprovalContractProject = (stageOverrides = {}) => {
           },
           ...stageOverrides,
         },
+      }),
+    },
+  };
+};
+
+const createFloorPipelineProject = ({ id, name, pipelineState, engineChoice = "claude" }) => {
+  const agentId = `${id}-agent`;
+  const agentStatus = pipelineState === "running" ? "running" : "complete";
+  const agents = [
+    {
+      id: agentId,
+      name: `${name} Agent`,
+      type: engineChoice,
+      wave: 1,
+      status: agentStatus,
+      progress: agentStatus === "running" ? 64 : 100,
+      elapsedLabel: agentStatus === "running" ? "9m" : "17m",
+    },
+  ];
+
+  const stageOverrides = {
+    intake: {
+      status: "complete",
+      output: `${name} intake approved`,
+      approval: { state: "approved" },
+    },
+    research: {
+      status: "complete",
+      output: `${name} research complete`,
+    },
+    plan: {
+      status: "complete",
+      output: `${name} plan approved`,
+      approval: { state: "approved" },
+    },
+    "wave-1": {
+      status: agentStatus === "running" ? "running" : "complete",
+      output: agentStatus === "running" ? `${name} wave is active` : `${name} wave complete`,
+      agentIds: [agentId],
+    },
+    verification: {
+      status: "queued",
+      output: `${name} verification pending`,
+    },
+    handoff: {
+      status: "queued",
+      output: `${name} handoff pending`,
+    },
+  };
+
+  if (pipelineState === "waiting") {
+    stageOverrides.verification = {
+      status: "complete",
+      output: `${name} verification package ready`,
+      approval: { state: "pending", note: "Awaiting verification sign-off" },
+    };
+  }
+
+  if (pipelineState === "blocked") {
+    stageOverrides.verification = {
+      status: "complete",
+      output: `${name} verification package needs revision`,
+      approval: { state: "needs_iteration", note: "Operator requested another pass" },
+    };
+  }
+
+  if (pipelineState === "handoff_ready") {
+    stageOverrides.verification = {
+      status: "complete",
+      output: `${name} verification approved`,
+      approval: { state: "approved", note: "Verification approved" },
+    };
+    stageOverrides.handoff = {
+      status: "queued",
+      output: `${name} awaits final handoff`,
+      approval: { state: "pending", note: "Awaiting final handoff approval" },
+    };
+  }
+
+  return {
+    id,
+    name,
+    description: `${name} floor contract project`,
+    phaseLabel: `Phase 1 — ${name}`,
+    engineChoice,
+    agents,
+    waves: { current: 1, total: 1 },
+    execution: {
+      stages: createCanonicalPrebuildStages({
+        projectId: id,
+        projectName: name,
+        agents,
+        waveCount: 1,
+        stageOverrides,
       }),
     },
   };
@@ -543,6 +638,423 @@ describe("Lumon state contract", () => {
     });
   });
 
+  it("keeps waiting, blocked, handoff-ready, and running departments inspectable from canonical pipeline truth", () => {
+    const state = createLumonState({
+      projects: [
+        createFloorPipelineProject({ id: "waiting-floor", name: "Waiting Floor", pipelineState: "waiting" }),
+        createFloorPipelineProject({ id: "blocked-floor", name: "Blocked Floor", pipelineState: "blocked" }),
+        createFloorPipelineProject({ id: "handoff-floor", name: "Handoff Floor", pipelineState: "handoff_ready" }),
+        createFloorPipelineProject({ id: "running-floor", name: "Running Floor", pipelineState: "running" }),
+      ],
+      selection: {
+        projectId: "handoff-floor",
+      },
+    });
+    const floorAgents = selectFloorAgents(state);
+    const floor = selectFloorViewModel(state);
+    const dashboardProjects = new Map(selectDashboardProjects(state).map((project) => [project.id, project]));
+    const orchestration = selectOrchestrationInput(state);
+    const departments = new Map(floor.departments.map((department) => [department.id, department]));
+    const expectedAnchors = lumonFloorLayoutSeed.departmentAnchors.slice(0, 4);
+
+    expect(floor.departments.map((department) => department.id)).toEqual([
+      "waiting-floor",
+      "blocked-floor",
+      "handoff-floor",
+      "running-floor",
+    ]);
+    expect(floor.departments.map((department) => ({ x: department.room.x, y: department.room.y }))).toEqual(expectedAnchors);
+    expect(floor.summary).toMatchObject({
+      departmentCount: 4,
+      presentDepartmentCount: 4,
+      deskDepartmentCount: 1,
+      inspectableDepartmentCount: 3,
+      waitingCount: 1,
+      blockedCount: 1,
+      handoffReadyCount: 1,
+      runningPipelineCount: 1,
+      completePipelineCount: 0,
+      queuedPipelineCount: 0,
+      agentCount: 4,
+      runningCount: 1,
+      failedCount: 0,
+      awayCount: 3,
+    });
+
+    expect(floorAgents.find((agent) => agent.projectId === "waiting-floor")).toMatchObject({
+      status: "complete",
+      location: "amenity",
+      projectStatus: "complete",
+      projectPipelineStatus: "waiting",
+      projectPipelineStatusLabel: "Waiting",
+      projectCurrentStageKey: "verification",
+      projectCurrentStageLabel: "Verification",
+      projectCurrentGateLabel: "Verification approval",
+      projectCurrentApprovalState: "pending",
+      projectCurrentApprovalSummary: "Awaiting Operator approval",
+    });
+    expect(floorAgents.find((agent) => agent.projectId === "handoff-floor")).toMatchObject({
+      status: "complete",
+      location: "amenity",
+      projectPipelineStatus: "handoff_ready",
+      projectCurrentStageKey: "handoff",
+      projectCurrentGateLabel: "Handoff approval",
+      projectCurrentApprovalState: "pending",
+    });
+
+    expect(departments.get("waiting-floor")).toMatchObject({
+      status: "complete",
+      pipelineStatus: "waiting",
+      pipelineStatusLabel: "Waiting",
+      currentStageLabel: "Verification",
+      currentGateLabel: "Verification approval",
+      currentApprovalState: "pending",
+      currentApprovalSummary: "Awaiting Operator approval",
+      currentApprovalNote: "Awaiting verification sign-off",
+      presence: {
+        visible: true,
+        inspectable: true,
+        persistentShell: true,
+        deskAgentCount: 0,
+        awayAgentCount: 1,
+        breakRoomAgentCount: 0,
+      },
+    });
+    expect(departments.get("waiting-floor").pipelineSummary).toBe("Verification is waiting on Verification approval");
+    expect(departments.get("waiting-floor").room.w).toBeGreaterThanOrEqual(220);
+    expect(departments.get("waiting-floor").room.h).toBeGreaterThanOrEqual(156);
+
+    expect(departments.get("blocked-floor")).toMatchObject({
+      status: "complete",
+      pipelineStatus: "blocked",
+      pipelineStatusLabel: "Blocked",
+      currentStageLabel: "Verification",
+      currentGateLabel: "Verification approval",
+      currentApprovalState: "needs_iteration",
+      currentApprovalSummary: "Operator requested iteration before retry",
+      currentApprovalNote: "Operator requested another pass",
+      presence: {
+        visible: true,
+        inspectable: true,
+        persistentShell: true,
+        deskAgentCount: 0,
+        awayAgentCount: 1,
+      },
+    });
+    expect(departments.get("blocked-floor").pipelineSummary).toBe("Verification needs another iteration before it can advance");
+
+    expect(departments.get("handoff-floor")).toMatchObject({
+      status: "complete",
+      pipelineStatus: "handoff_ready",
+      pipelineStatusLabel: "Handoff ready",
+      currentStageLabel: "Handoff",
+      currentGateLabel: "Handoff approval",
+      currentApprovalState: "pending",
+      currentApprovalSummary: "Awaiting Operator approval",
+      currentApprovalNote: "Awaiting final handoff approval",
+      presence: {
+        visible: true,
+        inspectable: true,
+        persistentShell: true,
+        deskAgentCount: 0,
+        awayAgentCount: 1,
+      },
+    });
+    expect(departments.get("handoff-floor").pipelineSummary).toBe("Handoff is ready for final handoff approval");
+
+    expect(departments.get("running-floor")).toMatchObject({
+      status: "running",
+      pipelineStatus: "running",
+      pipelineStatusLabel: "Running",
+      currentStageLabel: "Wave 1",
+      currentGateLabel: "Auto advance",
+      currentApprovalState: "not_required",
+      currentApprovalSummary: "No operator approval required",
+      presence: {
+        visible: true,
+        inspectable: false,
+        persistentShell: false,
+        deskAgentCount: 1,
+        awayAgentCount: 0,
+      },
+    });
+    expect(departments.get("running-floor").pipelineSummary).toBe("Wave 1 is actively executing");
+
+    expect(floor.selectedProject).toMatchObject({
+      id: "handoff-floor",
+      status: "complete",
+      pipelineStatus: "handoff_ready",
+      pipelineStatusLabel: "Handoff ready",
+      pipelineSummary: "Handoff is ready for final handoff approval",
+      currentStage: {
+        stageKey: "handoff",
+        label: "Handoff",
+        status: "queued",
+        approval: {
+          id: "gate:handoff-approval",
+          label: "Handoff approval",
+          state: "pending",
+          note: "Awaiting final handoff approval",
+        },
+      },
+      currentGate: {
+        id: "gate:handoff-approval",
+        label: "Handoff approval",
+        state: "pending",
+        note: "Awaiting final handoff approval",
+      },
+      presence: {
+        inspectable: true,
+        deskAgentCount: 0,
+        awayAgentCount: 1,
+      },
+    });
+    expect(floor.selectedProject.pipelineSummary).toBe(dashboardProjects.get("handoff-floor").pipelineSummary);
+    expect(floor.selectedProject.currentStageLabel).toBe(dashboardProjects.get("handoff-floor").pipeline.currentStageLabel);
+    expect(floor.selectedProject.currentGateLabel).toBe(dashboardProjects.get("handoff-floor").pipeline.currentGateLabel);
+    expect(floor.selectedProject.currentApprovalState).toBe(
+      dashboardProjects.get("handoff-floor").pipeline.currentApprovalState,
+    );
+    expect(floor.selectedProject.currentApprovalSummary).toBe(
+      dashboardProjects.get("handoff-floor").pipeline.currentApprovalSummary,
+    );
+
+    expect(orchestration).toMatchObject({
+      projectId: "handoff-floor",
+      projectName: "Handoff Floor",
+      status: "complete",
+      pipelineStatus: "handoff_ready",
+      pipelineStatusLabel: "Handoff ready",
+      pipelineSummary: "Handoff is ready for final handoff approval",
+      currentStage: {
+        id: "handoff-floor:handoff",
+        stageKey: "handoff",
+        status: "queued",
+      },
+      currentGate: {
+        id: "gate:handoff-approval",
+        label: "Handoff approval",
+        state: "pending",
+        note: "Awaiting final handoff approval",
+      },
+      handoffReady: true,
+    });
+  });
+
+  it("exposes per-department diagnostics derived from canonical project view models for all pipeline states", () => {
+    const state = createLumonState({
+      projects: [
+        createFloorPipelineProject({ id: "waiting-proj", name: "Waiting Proj", pipelineState: "waiting" }),
+        createFloorPipelineProject({ id: "blocked-proj", name: "Blocked Proj", pipelineState: "blocked" }),
+        createFloorPipelineProject({ id: "handoff-proj", name: "Handoff Proj", pipelineState: "handoff_ready" }),
+        createFloorPipelineProject({ id: "running-proj", name: "Running Proj", pipelineState: "running" }),
+      ],
+      selection: { projectId: "blocked-proj" },
+    });
+    const floor = selectFloorViewModel(state);
+    const dashboardProjects = new Map(selectDashboardProjects(state).map((project) => [project.id, project]));
+    const departments = new Map(floor.departments.map((department) => [department.id, department]));
+
+    // Waiting diagnostics
+    expect(departments.get("waiting-proj").diagnostics).toMatchObject({
+      pipelineStatus: "waiting",
+      pipelineLabel: "Waiting",
+      currentStageKey: "verification",
+      currentStageLabel: "Verification",
+      currentStageStatus: "complete",
+      currentGateId: "gate:verification-review",
+      currentGateLabel: "Verification approval",
+      currentApprovalState: "pending",
+      currentApprovalNote: "Awaiting verification sign-off",
+      handoffReady: false,
+      waiting: true,
+      blocked: false,
+      running: false,
+      complete: false,
+    });
+    expect(departments.get("waiting-proj").diagnostics.progressPercent).toBeGreaterThan(0);
+
+    // Blocked diagnostics
+    expect(departments.get("blocked-proj").diagnostics).toMatchObject({
+      pipelineStatus: "blocked",
+      pipelineLabel: "Blocked",
+      currentStageKey: "verification",
+      currentStageLabel: "Verification",
+      currentStageStatus: "complete",
+      currentGateId: "gate:verification-review",
+      currentGateLabel: "Verification approval",
+      currentApprovalState: "needs_iteration",
+      currentApprovalNote: "Operator requested another pass",
+      handoffReady: false,
+      waiting: false,
+      blocked: true,
+      running: false,
+      complete: false,
+    });
+
+    // Handoff-ready diagnostics
+    expect(departments.get("handoff-proj").diagnostics).toMatchObject({
+      pipelineStatus: "handoff_ready",
+      pipelineLabel: "Handoff ready",
+      currentStageKey: "handoff",
+      currentStageLabel: "Handoff",
+      currentStageStatus: "queued",
+      currentGateId: "gate:handoff-approval",
+      currentGateLabel: "Handoff approval",
+      currentApprovalState: "pending",
+      currentApprovalNote: "Awaiting final handoff approval",
+      handoffReady: true,
+      waiting: false,
+      blocked: false,
+      running: false,
+      complete: false,
+    });
+
+    // Running diagnostics
+    expect(departments.get("running-proj").diagnostics).toMatchObject({
+      pipelineStatus: "running",
+      pipelineLabel: "Running",
+      currentStageKey: "wave-1",
+      currentStageLabel: "Wave 1",
+      currentStageStatus: "running",
+      currentGateId: "gate:wave-auto-advance",
+      currentGateLabel: "Auto advance",
+      currentApprovalState: "not_required",
+      currentApprovalNote: null,
+      handoffReady: false,
+      waiting: false,
+      blocked: false,
+      running: true,
+      complete: false,
+    });
+
+    // Selected project diagnostics match dashboard truth
+    expect(floor.selectedProjectDiagnostics).toMatchObject({
+      pipelineStatus: "blocked",
+      pipelineLabel: "Blocked",
+      currentStageKey: "verification",
+      currentApprovalState: "needs_iteration",
+      blocked: true,
+    });
+    expect(floor.selectedProjectDiagnostics.pipelineSummary).toBe(
+      dashboardProjects.get("blocked-proj").pipelineSummary,
+    );
+    expect(floor.selectedProjectDiagnostics.currentStageLabel).toBe(
+      dashboardProjects.get("blocked-proj").pipeline.currentStageLabel,
+    );
+    expect(floor.selectedProjectDiagnostics.currentGateLabel).toBe(
+      dashboardProjects.get("blocked-proj").pipeline.currentGateLabel,
+    );
+    expect(floor.selectedProjectDiagnostics.currentApprovalState).toBe(
+      dashboardProjects.get("blocked-proj").pipeline.currentApprovalState,
+    );
+
+    // Floor diagnostics derive from same canonical truth as dashboard — check all four
+    for (const [projectId] of dashboardProjects) {
+      const department = departments.get(projectId);
+      const dashboard = dashboardProjects.get(projectId);
+      expect(department.diagnostics.pipelineStatus).toBe(dashboard.pipeline.status);
+      expect(department.diagnostics.pipelineSummary).toBe(dashboard.pipelineSummary);
+      expect(department.diagnostics.currentStageLabel).toBe(dashboard.pipeline.currentStageLabel);
+      expect(department.diagnostics.currentGateLabel).toBe(dashboard.pipeline.currentGateLabel);
+      expect(department.diagnostics.currentApprovalState).toBe(dashboard.pipeline.currentApprovalState);
+    }
+  });
+
+  it("tracks floor presence and room sizing for projects where no agents occupy desks", () => {
+    const state = createLumonState({
+      projects: [
+        createFloorPipelineProject({ id: "waiting-dept", name: "Waiting Dept", pipelineState: "waiting" }),
+        createFloorPipelineProject({ id: "blocked-dept", name: "Blocked Dept", pipelineState: "blocked" }),
+        createFloorPipelineProject({ id: "handoff-dept", name: "Handoff Dept", pipelineState: "handoff_ready" }),
+        createFloorPipelineProject({ id: "running-dept", name: "Running Dept", pipelineState: "running" }),
+      ],
+      selection: { projectId: "waiting-dept" },
+    });
+    const floor = selectFloorViewModel(state);
+    const departments = new Map(floor.departments.map((department) => [department.id, department]));
+
+    // Waiting: agent complete → amenity, but department stays visible via persistentShell
+    const waitingPresence = departments.get("waiting-dept").presence;
+    expect(waitingPresence).toMatchObject({
+      visible: true,
+      inspectable: true,
+      persistentShell: true,
+      deskAgentCount: 0,
+      awayAgentCount: 1,
+      breakRoomAgentCount: 0,
+      visibleAgentCount: 1,
+      activeAgentCount: 0,
+      roomFootprintCount: 1,
+    });
+    expect(waitingPresence.reason).toMatch(/waiting|approval/i);
+
+    // Blocked: agent complete → amenity, department visible via persistentShell
+    const blockedPresence = departments.get("blocked-dept").presence;
+    expect(blockedPresence).toMatchObject({
+      visible: true,
+      inspectable: true,
+      persistentShell: true,
+      deskAgentCount: 0,
+      awayAgentCount: 1,
+      visibleAgentCount: 1,
+    });
+    expect(blockedPresence.reason).toMatch(/iteration|blocked/i);
+
+    // Handoff-ready: agent complete → amenity, department visible via persistentShell
+    const handoffPresence = departments.get("handoff-dept").presence;
+    expect(handoffPresence).toMatchObject({
+      visible: true,
+      inspectable: true,
+      persistentShell: true,
+      deskAgentCount: 0,
+      awayAgentCount: 1,
+    });
+    expect(handoffPresence.reason).toMatch(/handoff|approval/i);
+
+    // Running: agent at desk, standard department shell
+    const runningPresence = departments.get("running-dept").presence;
+    expect(runningPresence).toMatchObject({
+      visible: true,
+      inspectable: false,
+      persistentShell: false,
+      deskAgentCount: 1,
+      awayAgentCount: 0,
+      visibleAgentCount: 1,
+      activeAgentCount: 1,
+    });
+
+    // Room sizing: inspectable departments get minimum 220×156 even with no desk agents
+    for (const deptId of ["waiting-dept", "blocked-dept", "handoff-dept"]) {
+      const room = departments.get(deptId).room;
+      expect(room.w).toBeGreaterThanOrEqual(220);
+      expect(room.h).toBeGreaterThanOrEqual(156);
+    }
+
+    // Running department gets standard sizing (minimum 200×140)
+    const runningRoom = departments.get("running-dept").room;
+    expect(runningRoom.w).toBeGreaterThanOrEqual(200);
+    expect(runningRoom.h).toBeGreaterThanOrEqual(140);
+
+    // Department order is deterministic based on project array order, not pipeline status
+    expect(floor.departments.map((d) => d.id)).toEqual([
+      "waiting-dept",
+      "blocked-dept",
+      "handoff-dept",
+      "running-dept",
+    ]);
+
+    // Summary counts track pipeline-status categories separately
+    expect(floor.summary.waitingCount).toBe(1);
+    expect(floor.summary.blockedCount).toBe(1);
+    expect(floor.summary.handoffReadyCount).toBe(1);
+    expect(floor.summary.runningPipelineCount).toBe(1);
+    expect(floor.summary.completePipelineCount).toBe(0);
+    expect(floor.summary.queuedPipelineCount).toBe(0);
+    expect(floor.summary.inspectableDepartmentCount).toBe(3);
+    expect(floor.summary.presentDepartmentCount).toBe(4);
+  });
+
   it("projects shared floor and orchestration view models from a single reducer-backed source of truth", () => {
     let state = createSeedLumonState({
       selection: {
@@ -559,6 +1071,11 @@ describe("Lumon state contract", () => {
       departmentLabel: "Policy Engine",
       location: "break-room",
       isSelected: true,
+      projectStatus: "failed",
+      projectPipelineStatus: "blocked",
+      projectCurrentStageKey: "wave-1",
+      projectCurrentGateLabel: "Auto advance",
+      projectCurrentApprovalState: "not_required",
     });
     expect(floorViewBefore).toMatchObject({
       layoutSeedLabel: "severance-floor-v1",
@@ -572,18 +1089,26 @@ describe("Lumon state contract", () => {
         id: "policy-gsd",
         name: "Policy Engine",
         status: "failed",
+        pipelineStatus: "blocked",
+        currentStageLabel: "Wave 1",
+        currentGateLabel: "Auto advance",
+        currentApprovalState: "not_required",
       },
       selectedAgent: {
         id: "a6",
         status: "failed",
         amenityRoomId: null,
+        projectPipelineStatus: "blocked",
       },
     });
+    expect(floorViewBefore.summary.blockedCount).toBeGreaterThanOrEqual(1);
     expect(orchestrationBefore).toMatchObject({
       projectId: "policy-gsd",
       projectName: "Policy Engine",
       progressPercent: 50,
       status: "failed",
+      pipelineStatus: "blocked",
+      pipelineStatusLabel: "Blocked",
       currentStage: { id: "policy-gsd:wave-1", status: "failed" },
     });
     expect(orchestrationBefore.stages.find((stage) => stage.id === "policy-gsd:wave-1")).toMatchObject({
@@ -624,6 +1149,10 @@ describe("Lumon state contract", () => {
       progress: 61,
       costLabel: "$0.49",
       tokensLabel: "48.2k",
+      projectPipelineStatus: "running",
+      projectCurrentStageKey: "wave-1",
+      projectCurrentGateLabel: "Auto advance",
+      projectCurrentApprovalState: "not_required",
     });
     expect(updatedAgent).toMatchObject({
       id: "a6",
@@ -646,13 +1175,19 @@ describe("Lumon state contract", () => {
       selectedProject: {
         id: "policy-gsd",
         status: "running",
+        pipelineStatus: "running",
+        currentStageLabel: "Wave 1",
+        currentGateLabel: "Auto advance",
+        currentApprovalState: "not_required",
       },
       selectedAgent: {
         id: "a6",
         status: "running",
+        projectPipelineStatus: "running",
       },
     });
     expect(orchestrationAfter.status).toBe("running");
+    expect(orchestrationAfter.pipelineStatus).toBe("running");
     expect(orchestrationAfter.stages.find((stage) => stage.id === "policy-gsd:wave-1")).toMatchObject({
       status: "running",
       progress: 61,

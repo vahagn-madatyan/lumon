@@ -19,9 +19,10 @@ One operator can see where every project stands, understand what each agent is d
 - The dashboard and orchestration surfaces now lead with the same selector-owned stage, gate, approval, and handoff-readiness truth instead of UI-local status summaries.
 - The selected-project dashboard seam now exposes Overview, Dossier, and Handoff subviews backed by selector-owned brief, stage-output, approval, and packet-readiness view models.
 - Empty persisted registries are treated as valid state, and rendered mission-control surfaces now guard against missing seeded selection assumptions.
-- The Severance-inspired floor now renders from deterministic seeded layout data and the same project/agent truth as the dashboard.
-- Vitest + React Testing Library contract/integration tests now cover reducer selectors, persistence round-trip behavior, rendered create/remount registry restore, stage-first pipeline visibility, and dossier/handoff detail rendering.
-- Still missing: Severance floor live-state integration beyond seeded presentation, repo/GSD integrations, and live runtime telemetry.
+- The Severance-inspired floor now renders pipeline-aware department room tones, persistent shell indicators for stuck projects, and pipeline diagnostics panels — all deriving from the same canonical project pipeline view models the dashboard uses.
+- Dashboard↔floor synchronization is proven for selected project, pipeline status, stage, gate, approval, and summary counts across waiting, blocked, handoff-ready, and running states.
+- Vitest + React Testing Library contract/integration tests now cover reducer selectors, persistence round-trip behavior, rendered create/remount registry restore, stage-first pipeline visibility, dossier/handoff detail rendering, and floor live-state synchronization.
+- Still missing: end-to-end operator loop proof (S06), repo/GSD integrations, and live runtime telemetry.
 
 ## Architecture / Key Patterns
 

@@ -99,16 +99,92 @@ const summarizeStatuses = (items, getter = (item) => item.status) =>
     { running: 0, queued: 0, complete: 0, failed: 0 },
   );
 
+const FLOOR_PIPELINE_INSPECTABLE_STATUSES = new Set(["waiting", "blocked", "handoff_ready"]);
+
 const resolveAmenityRoomId = (agentId) => FLOOR_AMENITY_ROOM_IDS[stableHash(agentId) % FLOOR_AMENITY_ROOM_IDS.length];
 
-const buildFloorRoomSize = (agents) => {
-  const deskCount = agents.filter((agent) => agent.status === "running").length;
-  const cols = Math.min(Math.max(deskCount, 1), 4);
-  const rows = Math.max(1, Math.ceil(deskCount / Math.max(cols, 1)));
+const buildDeskClusterFootprint = (deskCount) => {
+  if (deskCount <= 0) {
+    return { width: 0, height: 0 };
+  }
+
+  let rows;
+  let cols;
+  if (deskCount <= 2) {
+    rows = 1;
+    cols = 2;
+  } else if (deskCount <= 4) {
+    rows = 2;
+    cols = 2;
+  } else if (deskCount <= 6) {
+    rows = 2;
+    cols = 3;
+  } else {
+    rows = 2;
+    cols = Math.min(4, Math.ceil(deskCount / 2));
+  }
 
   return {
-    width: Math.max(cols * 76 + 40, 200),
-    height: Math.max(rows * 90 + 60, 140),
+    width: cols * 76,
+    height: rows * 84 + 8,
+  };
+};
+
+const buildEmptyDeskFootprint = (awayCount) => {
+  if (awayCount <= 0) {
+    return { width: 0, height: 0 };
+  }
+
+  const cols = Math.min(Math.max(awayCount, 1), 4);
+  const rows = Math.max(1, Math.ceil(awayCount / cols));
+
+  return {
+    width: cols * 56 + Math.max(0, cols - 1) * 4,
+    height: rows * 50 + Math.max(0, rows - 1) * 4,
+  };
+};
+
+const buildFloorPresence = (project, agents) => {
+  const deskAgents = agents.filter((agent) => agent.location === "department");
+  const amenityAgents = agents.filter((agent) => agent.location === "amenity");
+  const breakRoomAgents = agents.filter((agent) => agent.location === "break-room");
+  const inspectable = FLOOR_PIPELINE_INSPECTABLE_STATUSES.has(project.pipeline.status);
+  const persistentShell = inspectable && deskAgents.length === 0;
+
+  return {
+    visible: deskAgents.length > 0 || amenityAgents.length > 0 || breakRoomAgents.length > 0 || inspectable,
+    inspectable,
+    persistentShell,
+    deskAgentCount: deskAgents.length,
+    awayAgentCount: amenityAgents.length,
+    breakRoomAgentCount: breakRoomAgents.length,
+    visibleAgentCount: deskAgents.length + amenityAgents.length,
+    activeAgentCount: deskAgents.length + breakRoomAgents.length,
+    roomFootprintCount: Math.max(deskAgents.length, amenityAgents.length, persistentShell ? 1 : 0),
+    reason: inspectable
+      ? project.pipeline.summary
+      : deskAgents.length > 0
+        ? "Agents currently occupy the department floor shell."
+        : amenityAgents.length > 0
+          ? "Agents are away from their desks but still mapped to this department."
+          : breakRoomAgents.length > 0
+            ? "Failed agents remain inspectable through break room presence."
+            : "No live floor presence recorded.",
+  };
+};
+
+const buildFloorRoomSize = (presence) => {
+  const deskFootprint = buildDeskClusterFootprint(presence.deskAgentCount);
+  const awayFootprint = buildEmptyDeskFootprint(presence.awayAgentCount);
+  const contentWidth = Math.max(deskFootprint.width, awayFootprint.width, presence.persistentShell ? 160 : 0);
+  const contentHeight =
+    (presence.deskAgentCount > 0 ? deskFootprint.height : 0) +
+    (presence.deskAgentCount > 0 && presence.awayAgentCount > 0 ? 8 : 0) +
+    (presence.awayAgentCount > 0 ? awayFootprint.height : 0);
+
+  return {
+    width: Math.max(contentWidth + 28, presence.inspectable ? 220 : 200),
+    height: Math.max(contentHeight + 44, presence.inspectable ? 156 : 140),
   };
 };
 
@@ -807,6 +883,141 @@ const buildProjectViewModel = (project, selection, agentsById, options = {}) => 
   };
 };
 
+const buildProjectListViewModels = (state) => {
+  const { agentsById } = buildIndex(state);
+  return state.projects.map((project) => buildProjectViewModel(project, state.selection, agentsById));
+};
+
+const buildFloorDiagnostics = (project) => {
+  const pipelineStatus = project.pipeline.status;
+  const currentStage = project.currentStage;
+  const currentGate = project.currentGate;
+
+  return {
+    pipelineStatus,
+    pipelineLabel: project.pipeline.label,
+    pipelineSummary: project.pipeline.summary,
+    pipelineTone: project.pipeline.tone,
+    currentStageKey: currentStage?.stageKey ?? null,
+    currentStageLabel: currentStage?.label ?? "—",
+    currentStageStatus: currentStage?.status ?? null,
+    currentStageTone: currentStage?.stateTone ?? null,
+    currentGateId: currentGate?.id ?? null,
+    currentGateLabel: currentGate?.label ?? "No approval required",
+    currentApprovalState: project.pipeline.currentApprovalState,
+    currentApprovalLabel: project.pipeline.currentApprovalLabel,
+    currentApprovalSummary: project.pipeline.currentApprovalSummary,
+    currentApprovalNote: currentGate?.note ?? null,
+    progressPercent: project.pipeline.progressPercent,
+    completedCount: project.pipeline.completedCount,
+    totalCount: project.pipeline.totalCount,
+    handoffReady: project.handoffReady,
+    waiting: pipelineStatus === "waiting",
+    blocked: pipelineStatus === "blocked",
+    running: pipelineStatus === "running",
+    complete: pipelineStatus === "complete",
+  };
+};
+
+const buildFloorProjectViewModel = (project, agents, index, paletteOffset) => {
+  const presence = buildFloorPresence(project, agents);
+  const roomSize = buildFloorRoomSize(presence);
+  const anchor = lumonFloorLayoutSeed.departmentAnchors[index % lumonFloorLayoutSeed.departmentAnchors.length];
+  const yOffset =
+    Math.floor(index / lumonFloorLayoutSeed.departmentAnchors.length) *
+    lumonFloorLayoutSeed.departmentBandHeight;
+  const diagnostics = buildFloorDiagnostics(project);
+
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    phaseLabel: project.phaseLabel,
+    waveLabel: project.waveLabel,
+    engineChoice: project.engineChoice,
+    engineLabel: project.engineLabel,
+    status: project.status,
+    metrics: project.metrics,
+    agentCount: project.agentCount,
+    isSelected: project.isSelected,
+    paletteOffset,
+    room: {
+      x: anchor.x,
+      y: anchor.y + yOffset,
+      w: roomSize.width,
+      h: roomSize.height,
+    },
+    agents,
+    presence,
+    diagnostics,
+    pipeline: {
+      ...project.pipeline,
+      currentStageKey: project.currentStage?.stageKey ?? null,
+      currentStageStatus: project.currentStage?.status ?? null,
+      currentStageTone: project.currentStage?.stateTone ?? null,
+      currentApprovalNote: project.currentGate?.note ?? null,
+    },
+    currentStage: project.currentStage
+      ? {
+          id: project.currentStage.id,
+          stageKey: project.currentStage.stageKey,
+          label: project.currentStage.label,
+          status: project.currentStage.status,
+          stateTone: project.currentStage.stateTone,
+          approval: project.currentStage.approval,
+        }
+      : null,
+    currentGate: project.currentGate ? { ...project.currentGate } : null,
+    pipelineStatus: project.pipeline.status,
+    pipelineStatusLabel: project.pipeline.label,
+    pipelineSummary: project.pipeline.summary,
+    currentStageId: project.pipeline.currentStageId,
+    currentStageKey: project.currentStage?.stageKey ?? null,
+    currentStageLabel: project.pipeline.currentStageLabel,
+    currentStageStatus: project.currentStage?.status ?? null,
+    currentGateId: project.pipeline.currentGateId,
+    currentGateLabel: project.pipeline.currentGateLabel,
+    currentApprovalState: project.pipeline.currentApprovalState,
+    currentApprovalLabel: project.pipeline.currentApprovalLabel,
+    currentApprovalSummary: project.pipeline.currentApprovalSummary,
+    currentApprovalNote: project.currentGate?.note ?? null,
+    handoffReady: project.handoffReady,
+  };
+};
+
+const buildFloorAgentViewModels = (state, projectViewModels = buildProjectListViewModels(state)) => {
+  const projectViewModelById = new Map(projectViewModels.map((project) => [project.id, project]));
+
+  return selectAllAgents(state).map((agent) => {
+    const projectState = projectViewModelById.get(agent.projectId);
+    const location =
+      agent.status === "failed"
+        ? "break-room"
+        : agent.status === "running"
+          ? "department"
+          : "amenity";
+
+    return {
+      ...buildAgentViewModel(agent, state.selection),
+      departmentLabel: agent.projectName,
+      location,
+      amenityRoomId: location === "amenity" ? resolveAmenityRoomId(agent.id) : null,
+      projectStatus: projectState?.status ?? "queued",
+      projectMetrics: projectState?.metrics ?? summarizeStatuses([]),
+      projectPipelineStatus: projectState?.pipeline.status ?? "queued",
+      projectPipelineStatusLabel: projectState?.pipeline.label ?? PIPELINE_STATUS_META.queued.label,
+      projectPipelineSummary: projectState?.pipeline.summary ?? PIPELINE_STATUS_META.queued.summary,
+      projectCurrentStageKey: projectState?.currentStage?.stageKey ?? null,
+      projectCurrentStageLabel: projectState?.pipeline.currentStageLabel ?? "—",
+      projectCurrentGateLabel: projectState?.pipeline.currentGateLabel ?? "No approval required",
+      projectCurrentApprovalState: projectState?.pipeline.currentApprovalState ?? LUMON_APPROVAL_STATES.notRequired,
+      projectCurrentApprovalSummary:
+        projectState?.pipeline.currentApprovalSummary ?? APPROVAL_STATE_META[LUMON_APPROVAL_STATES.notRequired].summary,
+      paletteIndex: stableHash(agent.id) % 8,
+    };
+  });
+};
+
 export const selectFleetMetrics = (state) => {
   const agents = selectAllAgents(state);
   const statusBreakdown = summarizeStatuses(agents);
@@ -839,10 +1050,7 @@ export const selectDashboardCards = (state) => {
   ];
 };
 
-export const selectDashboardProjects = (state) => {
-  const { agentsById } = buildIndex(state);
-  return state.projects.map((project) => buildProjectViewModel(project, state.selection, agentsById));
-};
+export const selectDashboardProjects = (state) => buildProjectListViewModels(state);
 
 export const selectSelectedProjectDetail = (state) => {
   const project = selectSelectedProject(state);
@@ -858,41 +1066,12 @@ export const selectSelectedAgentDetail = (state) => {
   return buildAgentViewModel(agent, state.selection);
 };
 
-export const selectFloorAgents = (state) => {
-  const projectStatusById = new Map(
-    state.projects.map((project) => [
-      project.id,
-      {
-        status: selectProjectStatus(project),
-        metrics: summarizeStatuses(project.agents),
-      },
-    ]),
-  );
-
-  return selectAllAgents(state).map((agent) => {
-    const projectState = projectStatusById.get(agent.projectId);
-    const location =
-      agent.status === "failed"
-        ? "break-room"
-        : agent.status === "running"
-          ? "department"
-          : "amenity";
-
-    return {
-      ...buildAgentViewModel(agent, state.selection),
-      departmentLabel: agent.projectName,
-      location,
-      amenityRoomId: location === "amenity" ? resolveAmenityRoomId(agent.id) : null,
-      projectStatus: projectState?.status ?? "queued",
-      projectMetrics: projectState?.metrics ?? summarizeStatuses([]),
-      paletteIndex: stableHash(agent.id) % 8,
-    };
-  });
-};
+export const selectFloorAgents = (state) => buildFloorAgentViewModels(state);
 
 export const selectFloorViewModel = (state) => {
   const metrics = selectFleetMetrics(state);
-  const floorAgents = selectFloorAgents(state);
+  const projects = buildProjectListViewModels(state);
+  const floorAgents = buildFloorAgentViewModels(state, projects);
   const agentsByProjectId = floorAgents.reduce((map, agent) => {
     if (!map.has(agent.projectId)) {
       map.set(agent.projectId, []);
@@ -902,32 +1081,9 @@ export const selectFloorViewModel = (state) => {
   }, new Map());
 
   let paletteOffset = 0;
-  const departments = state.projects.map((project, index) => {
+  const departments = projects.map((project, index) => {
     const agents = agentsByProjectId.get(project.id) ?? [];
-    const room = buildFloorRoomSize(agents);
-    const anchor = lumonFloorLayoutSeed.departmentAnchors[index % lumonFloorLayoutSeed.departmentAnchors.length];
-    const yOffset =
-      Math.floor(index / lumonFloorLayoutSeed.departmentAnchors.length) *
-      lumonFloorLayoutSeed.departmentBandHeight;
-    const department = {
-      id: project.id,
-      name: project.name,
-      description: project.description,
-      phaseLabel: project.phaseLabel,
-      waveLabel: `Wave ${project.waves.current}/${project.waves.total}`,
-      status: selectProjectStatus(project),
-      metrics: summarizeStatuses(project.agents),
-      agentCount: project.agents.length,
-      isSelected: state.selection.projectId === project.id,
-      paletteOffset,
-      room: {
-        x: anchor.x,
-        y: anchor.y + yOffset,
-        w: room.width,
-        h: room.height,
-      },
-      agents,
-    };
+    const department = buildFloorProjectViewModel(project, agents, index, paletteOffset);
 
     paletteOffset += agents.length;
     return department;
@@ -948,11 +1104,29 @@ export const selectFloorViewModel = (state) => {
   const selectedProject = departments.find((department) => department.id === state.selection.projectId) ?? null;
   const selectedAgent = floorAgents.find((agent) => agent.id === state.selection.agentId) ?? null;
 
+  const runningDepartments = departments.filter((department) => department.pipelineStatus === "running");
+  const waitingDepartments = departments.filter((department) => department.pipelineStatus === "waiting");
+  const blockedDepartments = departments.filter((department) => department.pipelineStatus === "blocked");
+  const handoffReadyDepartments = departments.filter((department) => department.pipelineStatus === "handoff_ready");
+  const completeDepartments = departments.filter((department) => department.pipelineStatus === "complete");
+  const queuedDepartments = departments.filter(
+    (department) => department.pipelineStatus === "queued" || department.pipelineStatus === "idle",
+  );
+
   return {
     layoutSeedLabel: lumonFloorLayoutSeed.label,
     bossOrbit: { ...lumonFloorLayoutSeed.bossOrbit },
     summary: {
       departmentCount: departments.length,
+      presentDepartmentCount: departments.filter((department) => department.presence.visible).length,
+      deskDepartmentCount: departments.filter((department) => department.presence.deskAgentCount > 0).length,
+      inspectableDepartmentCount: departments.filter((department) => department.presence.inspectable).length,
+      waitingCount: waitingDepartments.length,
+      blockedCount: blockedDepartments.length,
+      handoffReadyCount: handoffReadyDepartments.length,
+      runningPipelineCount: runningDepartments.length,
+      completePipelineCount: completeDepartments.length,
+      queuedPipelineCount: queuedDepartments.length,
       agentCount: floorAgents.length,
       runningCount: metrics.running,
       failedCount: metrics.failed,
@@ -961,6 +1135,7 @@ export const selectFloorViewModel = (state) => {
     agents: floorAgents,
     departments,
     selectedProject,
+    selectedProjectDiagnostics: selectedProject?.diagnostics ?? null,
     selectedAgent,
     failedAgents: floorAgents.filter((agent) => agent.location === "break-room"),
     amenityAgents: floorAgents.filter((agent) => agent.location === "amenity"),
@@ -969,7 +1144,7 @@ export const selectFloorViewModel = (state) => {
 };
 
 export const selectOrchestrationInput = (state) => {
-  const projects = selectDashboardProjects(state);
+  const projects = buildProjectListViewModels(state);
   const selectedProject = projects.find((project) => project.isSelected) ?? projects[0] ?? null;
   const availableProjects = projects.map((project) => ({
     id: project.id,

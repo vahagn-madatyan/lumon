@@ -62,7 +62,7 @@ This milestone is complete only when all are true:
 - [x] **S04: Project dossier and handoff packet views** `risk:medium` `depends:[S02,S03]`
   > After this: opening a project reveals its working brief, stage outputs, approval state, and the structure of the future handoff packet.
 
-- [ ] **S05: Severed floor live-state integration** `risk:medium` `depends:[S01,S02,S03]`
+- [x] **S05: Severed floor live-state integration** `risk:medium` `depends:[S01,S02,S03]`
   > After this: the Severance floor reflects real shared project and agent-summary state instead of isolated mock behavior.
 
 - [ ] **S06: End-to-end operator loop integration** `risk:high` `depends:[S03,S04,S05]`
