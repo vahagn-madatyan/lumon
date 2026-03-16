@@ -1,7 +1,7 @@
 # GSD State
 
 **Active Milestone:** M002 — Discovery & Approval Pipeline
-**Active Slice:** S02 — Research & Business Planning Stages
+**Active Slice:** S03 — Naming & Brand Signal Stages
 **Phase:** planning
 **Requirements Status:** 14 active · 6 validated · 5 deferred · 4 out of scope
 
@@ -20,4 +20,4 @@
 - None
 
 ## Next Action
-Plan slice S02 (Research & Business Planning Stages).
+Plan slice S03 (Naming & Brand Signal Stages).

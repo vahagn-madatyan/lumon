@@ -31,6 +31,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import TerminalPanel from "./TerminalPanel";
+import ArtifactRenderer from "./ArtifactRenderer";
+import { useArtifact } from "@/lumon/useArtifact";
 
 const CARD_ICONS = {
   active: Activity,
@@ -515,8 +517,45 @@ function DossierCurrentApprovalCard({ section }) {
   );
 }
 
+function ArtifactDetailPanel({ artifactId, testId }) {
+  const { artifact, loading, error } = useArtifact(artifactId);
+
+  if (loading) {
+    return (
+      <div
+        className="animate-pulse space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2"
+        data-testid={`${testId}-loading`}
+      >
+        <div className="h-3 w-2/3 rounded bg-zinc-800" />
+        <div className="h-3 w-1/2 rounded bg-zinc-800" />
+        <div className="h-3 w-3/4 rounded bg-zinc-800" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 font-mono text-[10px] text-red-300"
+        data-testid={`${testId}-error`}
+      >
+        Failed to load artifact: {error}
+      </div>
+    );
+  }
+
+  if (!artifact) return null;
+
+  return (
+    <div data-testid={testId}>
+      <ArtifactRenderer artifact={artifact} />
+    </div>
+  );
+}
+
 function DossierStageOutputCard({ section }) {
   const baseTestId = `selected-project-dossier-stage-${section.stageKey}`;
+  const hasMultipleArtifacts = section.artifactIds?.length > 1;
 
   return (
     <Card className="bg-zinc-900/60 border-zinc-800" data-testid={baseTestId}>
@@ -538,8 +577,14 @@ function DossierStageOutputCard({ section }) {
           <Badge variant="secondary" className="bg-zinc-800 text-zinc-400 border-none font-mono text-[9px] uppercase tracking-[0.08em]">
             {section.durationLabel}
           </Badge>
+          {hasMultipleArtifacts && (
+            <Badge variant="secondary" className="bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-mono text-[9px] uppercase tracking-[0.08em]">
+              {section.artifactIds.length} artifacts
+            </Badge>
+          )}
         </div>
 
+        {/* Summary text renders immediately */}
         <div
           className={`rounded-lg border px-3 py-2 font-mono text-[11px] leading-relaxed ${
             section.outputMissing
@@ -548,8 +593,26 @@ function DossierStageOutputCard({ section }) {
           }`}
           data-testid={`${baseTestId}-summary`}
         >
-          {section.output ?? section.reason}
+          {section.hasArtifact ? section.outputSummary : (section.output ?? section.reason)}
         </div>
+
+        {/* Full artifact content loads progressively */}
+        {section.hasArtifact && !hasMultipleArtifacts && (
+          <ArtifactDetailPanel
+            artifactId={section.artifactId}
+            testId={`${baseTestId}-artifact`}
+          />
+        )}
+
+        {/* Multi-artifact: render each in its own panel */}
+        {hasMultipleArtifacts && section.artifactIds.map((id, index) => (
+          <ArtifactDetailPanel
+            key={id}
+            artifactId={id}
+            testId={`${baseTestId}-artifact-${index}`}
+          />
+        ))}
+
         <div className="font-mono text-[10px] text-zinc-500" data-testid={`${baseTestId}-reason`}>
           {section.reason}
         </div>

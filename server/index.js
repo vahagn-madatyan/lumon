@@ -13,6 +13,16 @@ app.use(express.json());
 app.use("/api/pipeline", pipelineRouter);
 
 // Artifact retrieval at top-level /api/artifacts/:id
+// Artifacts filtered by project + stage (must be before /:id to avoid matching "project" as an id)
+app.get("/api/artifacts/project/:projectId/stage/:stageKey", (req, res) => {
+  const { projectId, stageKey } = req.params;
+  const stageArtifacts = artifacts.getByProjectAndStage(projectId, stageKey);
+
+  console.log(`[bridge] GET /api/artifacts/project/${projectId}/stage/${stageKey} count=${stageArtifacts.length}`);
+  res.json(stageArtifacts);
+});
+
+// Single artifact by ID
 app.get("/api/artifacts/:id", (req, res) => {
   const artifact = artifacts.get(req.params.id);
 

@@ -4,11 +4,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, "data");
+let DATA_DIR = path.join(__dirname, "data");
 
 // Ensure data directory exists on module load
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+/**
+ * Override the data directory. Used by tests to isolate artifact storage.
+ * @param {string} dir
+ */
+export function setDataDir(dir) {
+  DATA_DIR = dir;
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
 }
 
 function artifactPath(id) {
@@ -56,6 +67,16 @@ export function getByProject(projectId) {
 }
 
 /**
+ * Get all artifacts for a project + stage combination.
+ * @param {string} projectId
+ * @param {string} stageKey
+ * @returns {object[]}
+ */
+export function getByProjectAndStage(projectId, stageKey) {
+  return list().filter((a) => a.projectId === projectId && a.stageKey === stageKey);
+}
+
+/**
  * List all stored artifacts.
  * @returns {object[]}
  */
@@ -70,6 +91,11 @@ export function list() {
 export function clear() {
   const files = fs.readdirSync(DATA_DIR).filter((f) => f.endsWith(".json"));
   for (const f of files) {
-    fs.unlinkSync(path.join(DATA_DIR, f));
+    try {
+      fs.unlinkSync(path.join(DATA_DIR, f));
+    } catch (err) {
+      // Tolerate ENOENT — file may have been removed by a parallel test
+      if (err.code !== "ENOENT") throw err;
+    }
   }
 }

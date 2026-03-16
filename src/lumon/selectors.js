@@ -451,6 +451,9 @@ const buildDossierStageSection = (stage) => {
     reason = `${stage.label} is resolved and its current stage output is available.`;
   }
 
+  // Multi-artifact support: project artifactIds array when present
+  const artifactIds = structured && Array.isArray(stage.output.artifactIds) ? stage.output.artifactIds : null;
+
   return {
     id: buildLumonDossierStageSectionId(stage.stageKey),
     kind: LUMON_DOSSIER_SECTION_DEFINITIONS.stage.kind,
@@ -468,6 +471,7 @@ const buildDossierStageSection = (stage) => {
     outputSummary: outputAvailable ? outputSummary : null,
     outputMissing: !outputAvailable,
     artifactId: structured ? stage.output.artifactId : null,
+    artifactIds,
     hasArtifact: structured,
     approval: stage.approval,
     isCurrent: stage.isCurrent,
@@ -501,6 +505,7 @@ const buildPacketEvidence = (stageSections) =>
     outputSummary: stageSection.outputSummary,
     outputMissing: stageSection.outputMissing,
     artifactId: stageSection.artifactId,
+    artifactIds: stageSection.artifactIds,
     hasArtifact: stageSection.hasArtifact,
     approval: stageSection.approval,
   }));
@@ -812,6 +817,7 @@ const buildProjectViewModel = (project, selection, agentsById, options = {}) => 
       output: stage.output,
       outputSummary: getOutputSummary(stage.output),
       artifactId: structured ? stage.output.artifactId : null,
+      artifactIds: structured && Array.isArray(stage.output.artifactIds) ? stage.output.artifactIds : null,
       hasArtifact: structured,
       status,
       progress,

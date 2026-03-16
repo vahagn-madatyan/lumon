@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as artifacts from "../artifacts.js";
 import * as pipeline from "../pipeline.js";
+import { getWebhookUrl, RESEARCH_SUB_STAGES } from "../config.js";
 
 const router = Router();
 
@@ -78,58 +79,78 @@ router.get("/events/:projectId", (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// REST endpoints (trigger, callback, approve, status)
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Fire an n8n webhook for a given stage. Creates a pipeline execution record,
+ * POSTs to the webhook, and handles failures.
+ * @param {{ projectId: string, stageKey: string, subStage?: string }} params
+ * @returns {Promise<{ execution: object, error?: string }>}
+ */
+async function fireWebhook({ projectId, stageKey, subStage = null }) {
+  const execution = pipeline.trigger({ projectId, stageKey, subStage });
+  const webhookUrl = getWebhookUrl(stageKey);
+
+  if (!webhookUrl) {
+    console.log(`[bridge] fireWebhook projectId=${projectId} stageKey=${stageKey} no webhook configured, recording intent`);
+    return { execution };
+  }
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectId,
+        stageKey,
+        subStage: subStage || undefined,
+        executionId: execution.executionId,
+      }),
+    });
+
+    if (!response.ok) {
+      console.log(`[bridge] fireWebhook projectId=${projectId} stageKey=${stageKey} n8n returned ${response.status}`);
+      pipeline.recordFailure({ executionId: execution.executionId, reason: `n8n returned HTTP ${response.status}` });
+      return { execution, error: `n8n returned HTTP ${response.status}` };
+    }
+
+    const data = await response.json();
+    if (data.executionId) {
+      execution.n8nExecutionId = data.executionId;
+    }
+  } catch (err) {
+    console.log(`[bridge] fireWebhook projectId=${projectId} stageKey=${stageKey} n8n unreachable: ${err.message}`);
+    pipeline.recordFailure({ executionId: execution.executionId, reason: err.message });
+    return { execution, error: err.message };
+  }
+
+  return { execution };
+}
+
+// ---------------------------------------------------------------------------
+// REST endpoints (trigger, callback, approve, status, artifacts)
 // ---------------------------------------------------------------------------
 
 /**
  * POST /api/pipeline/trigger
  * Trigger a pipeline execution for a project + stage.
- * Body: { projectId, stageKey }
+ * Body: { projectId, stageKey, subStage? }
  */
 router.post("/trigger", async (req, res) => {
-  const { projectId, stageKey } = req.body;
+  const { projectId, stageKey, subStage } = req.body;
 
   if (!projectId || !stageKey) {
     return res.status(400).json({ error: "Missing required fields", reason: "projectId and stageKey are required" });
   }
 
-  // Create execution first so we can pass executionId to n8n
-  const execution = pipeline.trigger({ projectId, stageKey });
+  // For research stage without explicit subStage, start sequential orchestration with first sub-stage
+  const effectiveSubStage = stageKey === "research" && !subStage ? RESEARCH_SUB_STAGES[0] : subStage;
 
-  const webhookUrl = process.env.N8N_WEBHOOK_URL;
+  const { execution, error } = await fireWebhook({ projectId, stageKey, subStage: effectiveSubStage || null });
 
-  if (webhookUrl) {
-    try {
-      const response = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, stageKey, executionId: execution.executionId }),
-      });
-
-      if (!response.ok) {
-        console.log(`[bridge] POST /api/pipeline/trigger projectId=${projectId} n8n returned ${response.status}`);
-        // Mark execution as failed since n8n rejected it
-        pipeline.recordFailure({ executionId: execution.executionId, reason: `n8n returned HTTP ${response.status}` });
-        return res.status(502).json({
-          error: "n8n webhook failed",
-          reason: `n8n returned HTTP ${response.status}`,
-        });
-      }
-
-      const data = await response.json();
-      if (data.executionId) {
-        execution.n8nExecutionId = data.executionId;
-      }
-    } catch (err) {
-      console.log(`[bridge] POST /api/pipeline/trigger projectId=${projectId} n8n unreachable: ${err.message}`);
-      pipeline.recordFailure({ executionId: execution.executionId, reason: err.message });
-      return res.status(502).json({
-        error: "n8n unreachable",
-        reason: err.message,
-      });
-    }
-  } else {
-    console.log(`[bridge] POST /api/pipeline/trigger projectId=${projectId} N8N_WEBHOOK_URL not configured, recording intent`);
+  if (error) {
+    return res.status(502).json({ error: "n8n webhook failed", reason: error });
   }
 
   console.log(`[bridge] POST /api/pipeline/trigger projectId=${projectId} stageKey=${stageKey} executionId=${execution.executionId}`);
@@ -137,7 +158,7 @@ router.post("/trigger", async (req, res) => {
   // Emit SSE: pipeline status changed to "triggered"
   emitSSE(projectId, "pipeline-status", {
     stageKey,
-    data: { status: execution.status, executionId: execution.executionId },
+    data: { status: execution.status, executionId: execution.executionId, subStage: effectiveSubStage },
   });
 
   res.status(201).json({ executionId: execution.executionId, status: execution.status });
@@ -146,10 +167,10 @@ router.post("/trigger", async (req, res) => {
 /**
  * POST /api/pipeline/callback
  * Receive callback from n8n with stage result.
- * Body: { executionId, projectId, stageKey, result, resumeUrl }
+ * Body: { executionId, projectId, stageKey, result, resumeUrl, subStage? }
  */
-router.post("/callback", (req, res) => {
-  const { executionId, projectId, stageKey, result, resumeUrl } = req.body;
+router.post("/callback", async (req, res) => {
+  const { executionId, projectId, stageKey, result, resumeUrl, subStage } = req.body;
 
   if (!executionId || !projectId || !stageKey) {
     return res.status(400).json({ error: "Missing required fields", reason: "executionId, projectId, and stageKey are required" });
@@ -161,24 +182,25 @@ router.post("/callback", (req, res) => {
     return res.status(404).json({ error: "Execution not found", reason: `No execution with id ${executionId}` });
   }
 
-  // Store the result as an artifact
+  // Store the result as an artifact — use subStage as type if provided
+  const artifactType = subStage || result?.type || "stage-result";
   const artifact = artifacts.create({
     projectId,
     stageKey,
-    type: result?.type || "stage-result",
+    type: artifactType,
     content: result?.content || result,
-    metadata: { executionId, ...(result?.metadata || {}) },
+    metadata: { executionId, subStage: subStage || null, ...(result?.metadata || {}) },
   });
 
   // Update pipeline state
-  pipeline.recordCallback({ executionId, projectId, stageKey, resumeUrl });
+  pipeline.recordCallback({ executionId, projectId, stageKey, resumeUrl, subStage });
 
-  console.log(`[bridge] POST /api/pipeline/callback projectId=${projectId} stageKey=${stageKey} artifactId=${artifact.id}`);
+  console.log(`[bridge] POST /api/pipeline/callback projectId=${projectId} stageKey=${stageKey} subStage=${subStage || "none"} artifactId=${artifact.id}`);
 
-  // Emit SSE: stage update (result received, status changed to awaiting_approval)
+  // Emit SSE: stage update
   emitSSE(projectId, "stage-update", {
     stageKey,
-    data: { status: "awaiting_approval", resumeUrl: !!resumeUrl },
+    data: { status: "awaiting_approval", resumeUrl: !!resumeUrl, subStage: subStage || null },
   });
 
   // Emit SSE: artifact ready
@@ -187,11 +209,36 @@ router.post("/callback", (req, res) => {
     data: {
       artifactId: artifact.id,
       type: artifact.type,
+      subStage: subStage || null,
       summary: typeof result?.content === "string" ? result.content.slice(0, 200) : "Artifact stored",
     },
   });
 
-  res.json({ ok: true, artifactId: artifact.id });
+  // Sequential orchestration: if this is a research sub-stage, check for next
+  let nextTriggered = null;
+  if (stageKey === "research" && subStage) {
+    const currentIndex = RESEARCH_SUB_STAGES.indexOf(subStage);
+    const nextSubStage = currentIndex >= 0 && currentIndex < RESEARCH_SUB_STAGES.length - 1
+      ? RESEARCH_SUB_STAGES[currentIndex + 1]
+      : null;
+
+    if (nextSubStage) {
+      console.log(`[bridge] sequential-next subStage=${nextSubStage} after=${subStage}`);
+      const { execution: nextExec, error: nextError } = await fireWebhook({
+        projectId,
+        stageKey: "research",
+        subStage: nextSubStage,
+      });
+
+      if (nextError) {
+        console.log(`[bridge] sequential-next subStage=${nextSubStage} failed: ${nextError}`);
+      } else {
+        nextTriggered = { executionId: nextExec.executionId, subStage: nextSubStage };
+      }
+    }
+  }
+
+  res.json({ ok: true, artifactId: artifact.id, nextTriggered });
 });
 
 /**
@@ -206,18 +253,17 @@ router.post("/approve", async (req, res) => {
     return res.status(400).json({ error: "Missing required fields", reason: "projectId, stageKey, and decision are required" });
   }
 
-  const execution = pipeline.getStatus(projectId);
+  // Look up execution for this project+stage
+  const execution = pipeline.getStageExecution(projectId, stageKey);
   if (!execution) {
-    console.log(`[bridge] POST /api/pipeline/approve projectId=${projectId} no execution found`);
-    return res.status(404).json({ error: "No execution found", reason: `No active execution for project ${projectId}` });
+    console.log(`[bridge] POST /api/pipeline/approve projectId=${projectId} stageKey=${stageKey} no execution found`);
+    return res.status(404).json({ error: "No execution found", reason: `No active execution for project ${projectId} stage ${stageKey}` });
   }
 
   // If approved and resumeUrl exists, call n8n to resume the workflow
   if (decision === "approved" && execution.resumeUrl) {
     try {
-      const response = await fetch(execution.resumeUrl, {
-        method: "GET",
-      });
+      const response = await fetch(execution.resumeUrl, { method: "GET" });
       if (!response.ok) {
         console.log(`[bridge] POST /api/pipeline/approve projectId=${projectId} n8n resume failed: ${response.status}`);
       }
@@ -230,24 +276,68 @@ router.post("/approve", async (req, res) => {
   console.log(`[bridge] POST /api/pipeline/approve projectId=${projectId} stageKey=${stageKey} decision=${decision}`);
 
   // Emit SSE: pipeline status changed after approval/rejection
-  const updatedExecution = pipeline.getStatus(projectId);
+  const stageExec = pipeline.getStageExecution(projectId, stageKey);
   emitSSE(projectId, "pipeline-status", {
     stageKey,
-    data: { status: updatedExecution?.status ?? decision, decision },
+    data: { status: stageExec?.status ?? decision, decision },
   });
 
-  res.json({ ok: true, decision });
+  // Auto-trigger research after intake approval
+  let autoTriggered = null;
+  if (decision === "approved" && stageKey === "intake") {
+    const researchWebhookUrl = getWebhookUrl("research");
+    if (researchWebhookUrl) {
+      console.log(`[bridge] auto-trigger research after intake approval projectId=${projectId}`);
+      const { execution: researchExec, error: researchError } = await fireWebhook({
+        projectId,
+        stageKey: "research",
+        subStage: RESEARCH_SUB_STAGES[0],
+      });
+
+      if (researchError) {
+        console.log(`[bridge] auto-trigger research failed: ${researchError}`);
+      } else {
+        autoTriggered = { stageKey: "research", executionId: researchExec.executionId, subStage: RESEARCH_SUB_STAGES[0] };
+
+        emitSSE(projectId, "pipeline-status", {
+          stageKey: "research",
+          data: { status: "triggered", executionId: researchExec.executionId, subStage: RESEARCH_SUB_STAGES[0] },
+        });
+      }
+    } else {
+      console.log(`[bridge] auto-trigger research skipped — no webhook configured projectId=${projectId}`);
+    }
+  }
+
+  res.json({ ok: true, decision, autoTriggered });
 });
 
 /**
  * GET /api/pipeline/status/:projectId
- * Get current pipeline execution state for a project.
+ * Get current pipeline execution state for a project — returns per-stage records.
  */
 router.get("/status/:projectId", (req, res) => {
   const status = pipeline.getStatus(req.params.projectId);
 
   console.log(`[bridge] GET /api/pipeline/status/${req.params.projectId} found=${!!status}`);
-  res.json(status || { projectId: req.params.projectId, status: "idle", message: "No active execution" });
+
+  if (!status) {
+    return res.json({ projectId: req.params.projectId, status: "idle", message: "No active execution" });
+  }
+
+  res.json({ projectId: req.params.projectId, stages: status });
+});
+
+/**
+ * GET /api/pipeline/artifacts/:projectId/:stageKey
+ * Get all artifacts for a project + stage combination (pipeline-scoped route).
+ */
+router.get("/artifacts/:projectId/:stageKey", (req, res) => {
+  const { projectId, stageKey } = req.params;
+  const stageArtifacts = artifacts.getByProjectAndStage(projectId, stageKey);
+
+  console.log(`[bridge] GET /api/pipeline/artifacts/${projectId}/${stageKey} count=${stageArtifacts.length}`);
+  res.json(stageArtifacts);
 });
 
 export default router;

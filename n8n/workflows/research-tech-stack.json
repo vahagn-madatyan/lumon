@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Research: Tech Stack Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-research-tech-stack",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-research-tech-stack"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tech Stack Analysis for the incoming project\nconst { projectId, stageKey, executionId, subStage } = $input.first().json.body;\n\nconst techStackResult = {\n  approaches: [\n    {\n      name: \"Node.js + React + PostgreSQL\",\n      score: 88,\n      strengths: [\"Unified language (JS/TS)\", \"Large ecosystem\", \"Strong hiring pool\", \"Proven at scale\"],\n      weaknesses: [\"CPU-bound task performance\", \"ORM complexity at scale\"],\n      cost: \"Low — all OSS, cloud-native friendly\",\n      timeToMvp: \"8-12 weeks\"\n    },\n    {\n      name: \"Go + React + PostgreSQL\",\n      score: 82,\n      strengths: [\"Excellent concurrency\", \"Low resource footprint\", \"Strong typing\", \"Fast builds\"],\n      weaknesses: [\"Smaller ecosystem for web\", \"Steeper learning curve\", \"Less frontend tooling integration\"],\n      cost: \"Low — all OSS\",\n      timeToMvp: \"10-14 weeks\"\n    },\n    {\n      name: \"Python (FastAPI) + React + PostgreSQL\",\n      score: 79,\n      strengths: [\"AI/ML ecosystem\", \"Rapid prototyping\", \"Good for data pipelines\"],\n      weaknesses: [\"GIL limits concurrency\", \"Type safety is opt-in\", \"Deployment complexity\"],\n      cost: \"Low — all OSS\",\n      timeToMvp: \"8-10 weeks\"\n    }\n  ],\n  tradeoffs: {\n    performance: \"Go leads for raw throughput; Node.js adequate for most web workloads; Python trails for concurrent connections\",\n    developerExperience: \"Node.js/React provides best full-stack DX with shared tooling; Go requires context-switching; Python has excellent prototyping speed\",\n    scalability: \"All three scale horizontally. Go has lowest per-instance cost. Node.js cluster mode is well-understood. Python needs more instances for equivalent throughput.\",\n    ecosystem: \"Node.js has the broadest web ecosystem. Python leads for AI/data. Go is strong for infrastructure but thinner for web.\",\n    hiring: \"Node.js/React developers are most available. Python developers are abundant but often specialized in data/ML. Go developers are fewer but typically senior.\"\n  },\n  recommendation: {\n    choice: \"Node.js + React + PostgreSQL\",\n    confidence: 0.85,\n    summary: \"Best balance of DX, ecosystem breadth, hiring pool, and time-to-MVP. The unified JS/TS stack reduces context-switching and enables code sharing between server and client. PostgreSQL provides the relational foundation with JSONB flexibility for semi-structured data.\",\n    keyDecisions: [\n      \"TypeScript everywhere for type safety\",\n      \"PostgreSQL over MongoDB for relational integrity + JSONB flexibility\",\n      \"React over Vue/Svelte for ecosystem and hiring\",\n      \"Express or Fastify for API layer — low lock-in\"\n    ]\n  }\n};\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'tech_stack',\n    techStackResult\n  }\n};"
+      },
+      "id": "tech-stack-analysis",
+      "name": "Tech Stack Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'tech_research', content: $json.techStackResult, metadata: { generatedAt: new Date().toISOString(), engine: 'n8n-research-ts-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Tech Stack Analysis", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Tech Stack Analysis": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-15T00:00:00.000Z",
+  "versionId": "1"
+}

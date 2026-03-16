@@ -25,9 +25,12 @@ One operator can see where every project stands, understand what each agent is d
 - **`stage.output` migrated from string to `{ artifactId, summary, type }` structured references with backward-compatible coercion — all M001 selectors consume the new shape without modification.**
 - **SSE endpoint streams typed events per projectId; `useServerSync` hook bridges server events to reducer dispatch. Dashboard shows connection status and conditional trigger/approve/reject buttons.**
 - **n8n intake/viability workflow template shipped as importable JSON. Full trigger→execute→callback→approve loop proven against live n8n Docker instance.**
-- Vitest + RTL tests cover reducer/selectors, persistence, rendered registry, pipeline visibility, dossier/handoff, floor sync, full operator loop, API contracts, artifact output migration, and server sync (10 files, 75 tests).
+- **Per-stage webhook registry routes different n8n workflow URLs by stageKey with global fallback. Sequential sub-workflow orchestration fires business plan then tech stack. Auto-trigger chain starts research after intake approval.**
+- **Multi-artifact accumulation via `lumon/append-artifact` reducer action — SSE artifact-ready events accumulate into `artifactIds` arrays without overwriting. Selectors project artifactIds through dossier and handoff packet evidence.**
+- **Type-dispatched `ArtifactRenderer` renders structured artifact content (viability_analysis, business_plan, tech_research) with section-based sub-renderers. `useArtifact` hook fetches content from server with module-level caching.**
+- Vitest + RTL tests cover reducer/selectors, persistence, rendered registry, pipeline visibility, dossier/handoff, floor sync, full operator loop, API contracts, artifact output migration, server sync, research pipeline orchestration, and artifact rendering (12 files, 121 tests).
 - The full operator loop (create → inspect → cross-surface → reload) is proven in jsdom and real browser.
-- Next: M002/S02 adds research and business planning stages; S03 adds naming and brand signals; S04 integrates the full pipeline with offline mode.
+- Next: M002/S03 adds naming and brand signal stages; S04 integrates the full pipeline with offline mode.
 
 ## Architecture / Key Patterns
 

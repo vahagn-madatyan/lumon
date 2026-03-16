@@ -114,7 +114,7 @@ describe("useServerSync", () => {
     });
   });
 
-  it("dispatches updateStage with artifact reference on artifact-ready event", () => {
+  it("dispatches appendArtifact on artifact-ready event", () => {
     const dispatch = vi.fn();
     renderHook(() => useServerSync({ projectId: "proj-1", dispatch }));
 
@@ -133,15 +133,13 @@ describe("useServerSync", () => {
     });
 
     expect(dispatch).toHaveBeenCalledWith({
-      type: "lumon/update-stage",
+      type: "lumon/append-artifact",
       payload: {
         stageId: "proj-1:intake",
-        changes: {
-          output: {
-            artifactId: "art-001",
-            summary: "Viability report ready",
-            type: "viability-report",
-          },
+        artifact: {
+          artifactId: "art-001",
+          summary: "Viability report ready",
+          type: "viability-report",
         },
       },
     });

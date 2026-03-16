@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Research: Business Plan Analysis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-research-business-plan",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-research-business-plan"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Business Plan Analysis for the incoming project\nconst { projectId, stageKey, executionId, subStage } = $input.first().json.body;\n\nconst businessPlan = {\n  targetAudience: {\n    primary: \"Mid-market SaaS companies (50-500 employees)\",\n    secondary: \"Enterprise teams exploring automation\",\n    painPoints: [\n      \"Manual workflow orchestration is time-consuming and error-prone\",\n      \"Existing tools lack domain-specific intelligence\",\n      \"Integration fatigue across disconnected platforms\"\n    ],\n    buyerPersonas: [\n      { role: \"VP of Engineering\", motivation: \"Reduce operational overhead\", budget: \"$50k-200k/yr\" },\n      { role: \"Head of Product\", motivation: \"Accelerate time-to-market\", budget: \"$30k-100k/yr\" }\n    ]\n  },\n  pricingPosture: {\n    model: \"usage-based with tier floors\",\n    tiers: [\n      { name: \"Starter\", price: \"$49/mo\", included: \"5 workflows, 1000 executions\" },\n      { name: \"Growth\", price: \"$199/mo\", included: \"25 workflows, 10000 executions\" },\n      { name: \"Enterprise\", price: \"Custom\", included: \"Unlimited workflows, SLA, dedicated support\" }\n    ],\n    competitivePosition: \"15-30% below enterprise incumbents, premium to open-source self-hosted\"\n  },\n  featurePhases: [\n    { phase: 1, name: \"Core Platform\", timeline: \"0-3 months\", features: [\"Workflow builder\", \"Webhook integrations\", \"Basic monitoring\"] },\n    { phase: 2, name: \"Intelligence Layer\", timeline: \"3-6 months\", features: [\"AI-powered suggestions\", \"Auto-optimization\", \"Anomaly detection\"] },\n    { phase: 3, name: \"Enterprise\", timeline: \"6-12 months\", features: [\"SSO/SAML\", \"Audit logging\", \"Custom SLA\", \"On-prem option\"] }\n  ],\n  revenueModel: {\n    year1: { mrr: \"$15k-50k\", customers: \"30-100\", strategy: \"PLG with sales assist\" },\n    year2: { mrr: \"$100k-300k\", customers: \"200-500\", strategy: \"Sales-led enterprise expansion\" },\n    breakeven: \"Month 14-18\",\n    unitEconomics: { cac: \"$1,200\", ltv: \"$8,400\", ltvCacRatio: 7.0 }\n  },\n  recommendation: {\n    decision: \"proceed\",\n    confidence: 0.82,\n    summary: \"Strong market opportunity with clear monetization path. Usage-based pricing aligns incentives. PLG motion reduces CAC. Main risk is enterprise sales cycle length.\",\n    keyRisks: [\n      \"Enterprise sales cycles may extend runway requirements\",\n      \"Open-source alternatives could compress pricing\",\n      \"Feature scope creep in Phase 2 intelligence layer\"\n    ]\n  }\n};\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'business_plan',\n    businessPlanResult: businessPlan\n  }\n};"
+      },
+      "id": "business-plan-analysis",
+      "name": "Business Plan Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'business_plan', content: $json.businessPlanResult, metadata: { generatedAt: new Date().toISOString(), engine: 'n8n-research-bp-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Business Plan Analysis", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Business Plan Analysis": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-15T00:00:00.000Z",
+  "versionId": "1"
+}

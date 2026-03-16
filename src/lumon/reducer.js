@@ -10,6 +10,7 @@ export const lumonActionTypes = {
   selectStage: "lumon/select-stage",
   updateAgent: "lumon/update-agent",
   updateStage: "lumon/update-stage",
+  appendArtifact: "lumon/append-artifact",
 };
 
 export const lumonActions = {
@@ -33,6 +34,10 @@ export const lumonActions = {
   updateStage: (stageId, changes, options = {}) => ({
     type: lumonActionTypes.updateStage,
     payload: { stageId, changes, ...options },
+  }),
+  appendArtifact: (stageId, artifact) => ({
+    type: lumonActionTypes.appendArtifact,
+    payload: { stageId, artifact },
   }),
 };
 
@@ -292,6 +297,51 @@ export function lumonReducer(state, action) {
           changed = true;
         }
         return nextProject;
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.appendArtifact: {
+      const stageId = action.payload?.stageId;
+      const artifact = action.payload?.artifact;
+      if (!stageId || !artifact?.artifactId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        const stageIndex = project.execution.stages.findIndex(
+          (stage) => stage.id === stageId || stage.meta?.aliasIds?.includes(stageId),
+        );
+        if (stageIndex === -1) return project;
+
+        const stage = project.execution.stages[stageIndex];
+        const existingOutput = stage.output;
+
+        // Build accumulated artifactIds array
+        const existingIds =
+          existingOutput != null && typeof existingOutput === "object" && Array.isArray(existingOutput.artifactIds)
+            ? existingOutput.artifactIds
+            : existingOutput != null && typeof existingOutput === "object" && typeof existingOutput.artifactId === "string" && existingOutput.artifactId
+              ? [existingOutput.artifactId]
+              : [];
+
+        // Deduplicate — don't add the same artifactId twice
+        const artifactIds = existingIds.includes(artifact.artifactId)
+          ? [...existingIds]
+          : [...existingIds, artifact.artifactId];
+
+        const mergedOutput = {
+          artifactId: artifact.artifactId, // latest is always primary
+          summary: artifact.summary,
+          type: artifact.type,
+          artifactIds,
+        };
+
+        changed = true;
+        return updateProjectStage(project, stageId, { output: mergedOutput }, now);
       });
 
       return changed ? buildState(state, projects) : state;

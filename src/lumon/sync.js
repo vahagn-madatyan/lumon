@@ -59,19 +59,18 @@ export function useServerSync({ projectId, dispatch }) {
         const payload = JSON.parse(event.data);
         setLastEvent({ type: "artifact-ready", ...payload });
 
-        // Dispatch updateStage to set the artifact reference on the relevant stage
+        // Dispatch appendArtifact to accumulate multiple artifacts per stage
         if (dispatch && payload.stageKey && payload.data?.artifactId) {
           const stageId = `${payload.projectId}:${payload.stageKey}`;
+          console.log(`[sync] artifact-ready stageId=${stageId} artifactId=${payload.data.artifactId} type=${payload.data.type || "stage-result"}`);
           dispatch({
-            type: "lumon/update-stage",
+            type: "lumon/append-artifact",
             payload: {
               stageId,
-              changes: {
-                output: {
-                  artifactId: payload.data.artifactId,
-                  summary: payload.data.summary || "Artifact ready",
-                  type: payload.data.type || "stage-result",
-                },
+              artifact: {
+                artifactId: payload.data.artifactId,
+                summary: payload.data.summary || "Artifact ready",
+                type: payload.data.type || "stage-result",
               },
             },
           });

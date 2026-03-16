@@ -4,9 +4,10 @@ import {
   createProject,
   isStructuredOutput,
   getOutputSummary,
+  createLumonState,
 } from "../model";
 import { selectSelectedProjectDetail, selectDashboardProjects } from "../selectors";
-import { createLumonState } from "../model";
+import { lumonReducer } from "../reducer";
 
 // --- Helpers ---
 
@@ -180,5 +181,158 @@ describe("selector view models with artifact references", () => {
     expect(researchEvidence.artifactId).toBe("art-viability-001");
     expect(researchEvidence.hasArtifact).toBe(true);
     expect(researchEvidence.outputSummary).toBe("Viability analysis complete — 3 risks identified");
+  });
+});
+
+// --- Multi-artifact projection ---
+
+const MULTI_ARTIFACT_OUTPUT = Object.freeze({
+  artifactId: "art-tech-002",
+  summary: "Tech research complete",
+  type: "tech_research",
+  artifactIds: ["art-biz-001", "art-tech-002"],
+});
+
+describe("multi-artifact artifactIds projection", () => {
+  it("projects artifactIds array in dossier stage section", () => {
+    const state = makeProjectWithStageOutput("research", MULTI_ARTIFACT_OUTPUT);
+    const detail = selectSelectedProjectDetail(state);
+    const researchSection = detail.dossier.stageOutputs.find((s) => s.stageKey === "research");
+
+    expect(researchSection.artifactIds).toEqual(["art-biz-001", "art-tech-002"]);
+    expect(researchSection.artifactId).toBe("art-tech-002");
+    expect(researchSection.hasArtifact).toBe(true);
+  });
+
+  it("projects artifactIds in stage timeline view model", () => {
+    const state = makeProjectWithStageOutput("research", MULTI_ARTIFACT_OUTPUT);
+    const projects = selectDashboardProjects(state);
+    const researchStage = projects[0].stageTimeline.find((s) => s.stageKey === "research");
+
+    expect(researchStage.artifactIds).toEqual(["art-biz-001", "art-tech-002"]);
+    expect(researchStage.artifactId).toBe("art-tech-002");
+  });
+
+  it("projects artifactIds in handoff packet evidence", () => {
+    const state = makeProjectWithStageOutput("research", MULTI_ARTIFACT_OUTPUT);
+    const detail = selectSelectedProjectDetail(state);
+    const archSection = detail.handoffPacket.sections.find((s) => s.id === "handoff:architecture");
+    const researchEvidence = archSection.evidence.find((e) => e.stageKey === "research");
+
+    expect(researchEvidence.artifactIds).toEqual(["art-biz-001", "art-tech-002"]);
+    expect(researchEvidence.hasArtifact).toBe(true);
+  });
+
+  it("preserves single-artifact backward compatibility (null artifactIds)", () => {
+    const state = makeProjectWithStageOutput("research", STRUCTURED_OUTPUT);
+    const detail = selectSelectedProjectDetail(state);
+    const researchSection = detail.dossier.stageOutputs.find((s) => s.stageKey === "research");
+
+    // Single-artifact output doesn't have artifactIds array
+    expect(researchSection.artifactIds).toBeNull();
+    expect(researchSection.artifactId).toBe("art-viability-001");
+    expect(researchSection.hasArtifact).toBe(true);
+  });
+
+  it("preserves string output backward compatibility", () => {
+    const state = makeProjectWithStageOutput("research", STRING_OUTPUT);
+    const detail = selectSelectedProjectDetail(state);
+    const researchSection = detail.dossier.stageOutputs.find((s) => s.stageKey === "research");
+
+    expect(researchSection.artifactIds).toBeNull();
+    expect(researchSection.artifactId).toBeNull();
+    expect(researchSection.hasArtifact).toBe(false);
+  });
+});
+
+// --- Reducer append-artifact action ---
+
+describe("lumon/append-artifact reducer action", () => {
+  it("creates initial artifact reference from string output", () => {
+    const state = makeProjectWithStageOutput("research", "Pending research kickoff");
+    
+
+    const nextState = lumonReducer(state, {
+      type: "lumon/append-artifact",
+      payload: {
+        stageId: "proj-test:research",
+        artifact: {
+          artifactId: "art-biz-001",
+          summary: "Business plan ready",
+          type: "business_plan",
+        },
+      },
+    });
+
+    const stage = nextState.projects[0].execution.stages.find((s) => s.stageKey === "research");
+    expect(stage.output.artifactId).toBe("art-biz-001");
+    expect(stage.output.artifactIds).toEqual(["art-biz-001"]);
+    expect(stage.output.summary).toBe("Business plan ready");
+    expect(stage.output.type).toBe("business_plan");
+  });
+
+  it("accumulates second artifact without clobbering first", () => {
+    const state = makeProjectWithStageOutput("research", {
+      artifactId: "art-biz-001",
+      summary: "Business plan ready",
+      type: "business_plan",
+      artifactIds: ["art-biz-001"],
+    });
+    
+
+    const nextState = lumonReducer(state, {
+      type: "lumon/append-artifact",
+      payload: {
+        stageId: "proj-test:research",
+        artifact: {
+          artifactId: "art-tech-002",
+          summary: "Tech research complete",
+          type: "tech_research",
+        },
+      },
+    });
+
+    const stage = nextState.projects[0].execution.stages.find((s) => s.stageKey === "research");
+    expect(stage.output.artifactId).toBe("art-tech-002"); // latest is primary
+    expect(stage.output.artifactIds).toEqual(["art-biz-001", "art-tech-002"]);
+    expect(stage.output.summary).toBe("Tech research complete");
+  });
+
+  it("deduplicates when same artifactId is appended twice", () => {
+    const state = makeProjectWithStageOutput("research", {
+      artifactId: "art-biz-001",
+      summary: "Business plan ready",
+      type: "business_plan",
+      artifactIds: ["art-biz-001"],
+    });
+    
+
+    const nextState = lumonReducer(state, {
+      type: "lumon/append-artifact",
+      payload: {
+        stageId: "proj-test:research",
+        artifact: {
+          artifactId: "art-biz-001",
+          summary: "Updated business plan",
+          type: "business_plan",
+        },
+      },
+    });
+
+    const stage = nextState.projects[0].execution.stages.find((s) => s.stageKey === "research");
+    expect(stage.output.artifactIds).toEqual(["art-biz-001"]); // no duplicates
+    expect(stage.output.summary).toBe("Updated business plan"); // summary updated
+  });
+
+  it("ignores action with missing stageId", () => {
+    const state = makeProjectWithStageOutput("research", "Pending");
+    
+
+    const nextState = lumonReducer(state, {
+      type: "lumon/append-artifact",
+      payload: { artifact: { artifactId: "art-001", summary: "x", type: "y" } },
+    });
+
+    expect(nextState).toBe(state);
   });
 });

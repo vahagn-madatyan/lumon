@@ -1,11 +1,21 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, afterAll } from "vitest";
 import request from "supertest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import app from "../index.js";
 import * as pipeline from "../pipeline.js";
 import * as artifacts from "../artifacts.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TEST_DATA_DIR = path.join(__dirname, ".tmp-data-pipeline-api");
+
 // Track the server instance to close after tests
 let server;
+
+beforeAll(() => {
+  artifacts.setDataDir(TEST_DATA_DIR);
+});
 
 beforeEach(() => {
   pipeline.clear();
@@ -17,6 +27,11 @@ afterEach(() => {
     server.close();
     server = null;
   }
+});
+
+afterAll(() => {
+  artifacts.clear();
+  try { fs.rmSync(TEST_DATA_DIR, { recursive: true }); } catch {}
 });
 
 describe("POST /api/pipeline/trigger", () => {
@@ -83,10 +98,10 @@ describe("POST /api/pipeline/callback", () => {
     expect(artifactRes.body.stageKey).toBe("discovery");
     expect(artifactRes.body.content).toEqual({ score: 85, summary: "Strong market fit" });
 
-    // Verify execution state updated
+    // Verify execution state updated (status endpoint returns per-stage records)
     const statusRes = await request(app).get("/api/pipeline/status/proj-1");
-    expect(statusRes.body.status).toBe("awaiting_approval");
-    expect(statusRes.body.resumeUrl).toBe("http://n8n:5678/webhook-waiting/abc-123");
+    expect(statusRes.body.stages.discovery.status).toBe("awaiting_approval");
+    expect(statusRes.body.stages.discovery.resumeUrl).toBe("http://n8n:5678/webhook-waiting/abc-123");
   });
 
   it("returns 404 for callback with unknown executionId", async () => {
@@ -139,10 +154,10 @@ describe("POST /api/pipeline/approve", () => {
     expect(res.body.ok).toBe(true);
     expect(res.body.decision).toBe("approved");
 
-    // Verify execution state
+    // Verify execution state (per-stage)
     const statusRes = await request(app).get("/api/pipeline/status/proj-2");
-    expect(statusRes.body.status).toBe("approved");
-    expect(statusRes.body.completedAt).toBeTruthy();
+    expect(statusRes.body.stages.discovery.status).toBe("approved");
+    expect(statusRes.body.stages.discovery.completedAt).toBeTruthy();
   });
 
   it("rejects a stage and updates execution status", async () => {
@@ -169,7 +184,7 @@ describe("POST /api/pipeline/approve", () => {
     expect(res.body.decision).toBe("rejected");
 
     const statusRes = await request(app).get("/api/pipeline/status/proj-3");
-    expect(statusRes.body.status).toBe("rejected");
+    expect(statusRes.body.stages.discovery.status).toBe("rejected");
   });
 
   it("returns 404 for approve with non-existent project", async () => {
@@ -238,10 +253,10 @@ describe("GET /api/pipeline/status/:projectId", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.projectId).toBe("proj-5");
-    expect(res.body.status).toBe("triggered");
-    expect(res.body.stageKey).toBe("naming");
-    expect(res.body).toHaveProperty("executionId");
-    expect(res.body).toHaveProperty("triggeredAt");
+    expect(res.body.stages.naming.status).toBe("triggered");
+    expect(res.body.stages.naming.stageKey).toBe("naming");
+    expect(res.body.stages.naming).toHaveProperty("executionId");
+    expect(res.body.stages.naming).toHaveProperty("triggeredAt");
   });
 
   it("returns idle status for project with no executions", async () => {
@@ -279,9 +294,9 @@ describe("full lifecycle: trigger → callback → approve", () => {
 
     expect(callbackRes.body.ok).toBe(true);
 
-    // Verify awaiting approval
+    // Verify awaiting approval (per-stage)
     let status = await request(app).get("/api/pipeline/status/proj-lifecycle");
-    expect(status.body.status).toBe("awaiting_approval");
+    expect(status.body.stages.discovery.status).toBe("awaiting_approval");
 
     // 3. Approve
     const approveRes = await request(app)
@@ -290,10 +305,10 @@ describe("full lifecycle: trigger → callback → approve", () => {
 
     expect(approveRes.body.decision).toBe("approved");
 
-    // Verify final state
+    // Verify final state (per-stage)
     status = await request(app).get("/api/pipeline/status/proj-lifecycle");
-    expect(status.body.status).toBe("approved");
-    expect(status.body.completedAt).toBeTruthy();
+    expect(status.body.stages.discovery.status).toBe("approved");
+    expect(status.body.stages.discovery.completedAt).toBeTruthy();
 
     // Verify artifact is retrievable
     const artifactRes = await request(app).get(`/api/artifacts/${callbackRes.body.artifactId}`);

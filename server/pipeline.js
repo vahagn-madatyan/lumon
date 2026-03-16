@@ -2,30 +2,31 @@ import { randomUUID } from "node:crypto";
 
 /**
  * In-memory pipeline execution state tracker.
- * Tracks per-project pipeline runs through the trigger→callback→approve lifecycle.
+ * Tracks per-project, per-stage pipeline runs through the trigger→callback→approve lifecycle.
  *
  * Storage: Map<executionId, ExecutionRecord>
- * Index:   Map<projectId, executionId> (latest execution per project)
+ * Index:   Map<projectId, Map<stageKey, executionId>> (latest execution per stage per project)
  */
 
 /** @type {Map<string, object>} */
 const executions = new Map();
 
-/** @type {Map<string, string>} projectId → latest executionId */
+/** @type {Map<string, Map<string, string>>} projectId → Map<stageKey, executionId> */
 const projectIndex = new Map();
 
 /**
  * Create a new pipeline execution for a project + stage.
- * @param {{ projectId: string, stageKey: string }} params
+ * @param {{ projectId: string, stageKey: string, subStage?: string }} params
  * @returns {object} The execution record
  */
-export function trigger({ projectId, stageKey }) {
+export function trigger({ projectId, stageKey, subStage = null }) {
   const executionId = randomUUID();
   const record = {
     projectId,
     executionId,
     status: "triggered",
     stageKey,
+    subStage,
     n8nExecutionId: null,
     resumeUrl: null,
     triggeredAt: new Date().toISOString(),
@@ -33,22 +34,28 @@ export function trigger({ projectId, stageKey }) {
   };
 
   executions.set(executionId, record);
-  projectIndex.set(projectId, executionId);
+
+  // Two-level index: projectId → stageKey → executionId
+  if (!projectIndex.has(projectId)) {
+    projectIndex.set(projectId, new Map());
+  }
+  projectIndex.get(projectId).set(stageKey, executionId);
 
   return record;
 }
 
 /**
  * Record a callback from n8n with stage result and resumeUrl.
- * @param {{ executionId: string, projectId: string, stageKey: string, resumeUrl?: string }} params
+ * @param {{ executionId: string, projectId: string, stageKey: string, resumeUrl?: string, subStage?: string }} params
  * @returns {object|null} Updated record, or null if execution not found
  */
-export function recordCallback({ executionId, projectId, stageKey, resumeUrl = null }) {
+export function recordCallback({ executionId, projectId, stageKey, resumeUrl = null, subStage = null }) {
   const record = executions.get(executionId);
   if (!record) return null;
 
   record.status = "awaiting_approval";
   record.resumeUrl = resumeUrl;
+  if (subStage) record.subStage = subStage;
 
   return record;
 }
@@ -56,10 +63,13 @@ export function recordCallback({ executionId, projectId, stageKey, resumeUrl = n
 /**
  * Record an approval or rejection decision.
  * @param {{ projectId: string, stageKey: string, decision: string }} params
- * @returns {object|null} Updated record, or null if no execution found for project
+ * @returns {object|null} Updated record, or null if no execution found for project+stage
  */
 export function recordApproval({ projectId, stageKey, decision }) {
-  const executionId = projectIndex.get(projectId);
+  const stageMap = projectIndex.get(projectId);
+  if (!stageMap) return null;
+
+  const executionId = stageMap.get(stageKey);
   if (!executionId) return null;
 
   const record = executions.get(executionId);
@@ -72,13 +82,38 @@ export function recordApproval({ projectId, stageKey, decision }) {
 }
 
 /**
- * Get the current pipeline execution state for a project.
+ * Get all pipeline execution states for a project (per-stage).
  * @param {string} projectId
- * @returns {object|null}
+ * @returns {object} Per-stage execution map, or idle status
  */
 export function getStatus(projectId) {
-  const executionId = projectIndex.get(projectId);
+  const stageMap = projectIndex.get(projectId);
+  if (!stageMap || stageMap.size === 0) {
+    return null;
+  }
+
+  const stages = {};
+  for (const [stageKey, executionId] of stageMap) {
+    const record = executions.get(executionId);
+    if (record) stages[stageKey] = record;
+  }
+
+  return Object.keys(stages).length > 0 ? stages : null;
+}
+
+/**
+ * Get the execution for a specific project + stage.
+ * @param {string} projectId
+ * @param {string} stageKey
+ * @returns {object|null}
+ */
+export function getStageExecution(projectId, stageKey) {
+  const stageMap = projectIndex.get(projectId);
+  if (!stageMap) return null;
+
+  const executionId = stageMap.get(stageKey);
   if (!executionId) return null;
+
   return executions.get(executionId) || null;
 }
 
