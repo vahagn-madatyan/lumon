@@ -58,7 +58,7 @@ This milestone is complete only when all are true:
   > After this: the operator triggers a discovery run on a project, n8n executes a viability analysis, the structured result appears in the Lumon dashboard, and the operator approves or rejects it — proven in the real browser with a live n8n instance.
 - [x] **S02: Research & Business Planning Stages** `risk:medium` `depends:[S01]`
   > After this: after intake approval, the research stage triggers business planning and tech-stack analysis sub-workflows in n8n, and their structured artifacts render as inspectable dossier content in the dashboard.
-- [ ] **S03: Naming & Brand Signal Stages** `risk:medium` `depends:[S01]`
+- [x] **S03: Naming & Brand Signal Stages** `risk:medium` `depends:[S01]`
   > After this: naming candidates appear as a selectable list, the operator picks a winner, and domain availability and trademark signals display with advisory labels — all orchestrated through n8n.
 - [ ] **S04: Architecture Package & Full Pipeline Integration** `risk:low` `depends:[S01,S02,S03]`
   > After this: a project runs through the complete discovery pipeline from intake to approved build dossier, with architecture/spec/prototype artifacts populating the handoff packet, rejection/iteration flows proven, offline mode working, and n8n workflow templates shipped as importable JSON.

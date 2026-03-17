@@ -2,19 +2,9 @@
 
 This file is the explicit capability and coverage contract for the project.
 
-Use it to track what is actively in scope, what has been validated by completed work, what is intentionally deferred, and what is explicitly out of scope.
-
-Guidelines:
-- Keep requirements capability-oriented, not a giant feature wishlist.
-- Requirements should be atomic, testable, and stated in plain language.
-- Every **Active** requirement should be mapped to a slice, deferred, blocked with reason, or moved out of scope.
-- Each requirement should have one accountable primary owner and may have supporting slices.
-- Research may suggest requirements, but research does not silently make them binding.
-- Validation means the requirement was actually proven by completed work and verification, not just discussed.
-
 ## Active
 
-### R004 — Explicit approval gates between major pre-build stages
+### R004 — Major pre-build stages must stop for explicit operator approval before the project advances.
 - Class: operability
 - Status: active
 - Description: Major pre-build stages must stop for explicit operator approval before the project advances.
@@ -25,7 +15,7 @@ Guidelines:
 - Validation: mapped
 - Notes: Applies especially to transitions that affect scope, brand, or build-readiness.
 
-### R005 — Viability analysis before build decision
+### R005 — Lumon must produce an explicit should-we-build-this assessment before technical execution begins.
 - Class: core-capability
 - Status: active
 - Description: Lumon must produce an explicit should-we-build-this assessment before technical execution begins.
@@ -36,7 +26,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: Output should be advisory and reviewable, not silent auto-scope.
 
-### R006 — Business planning output
+### R006 — The pre-build package must include business framing such as target audience, pricing posture, feature phases, and rough value model.
 - Class: core-capability
 - Status: active
 - Description: The pre-build package must include business framing such as target audience, pricing posture, feature phases, and rough value model.
@@ -47,7 +37,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: ARR/MRR reasoning should be transparent and clearly labeled as estimate.
 
-### R007 — Tech-stack research and iteration workflow
+### R007 — Lumon must compare and iterate on plausible technical approaches before locking the build direction.
 - Class: core-capability
 - Status: active
 - Description: Lumon must compare and iterate on plausible technical approaches before locking the build direction.
@@ -58,29 +48,29 @@ Guidelines:
 - Validation: unmapped
 - Notes: Research should inform the user, not silently hard-bind stack choices.
 
-### R008 — Naming workflow with project and business naming exploration
+### R008 — Lumon must help generate, compare, and refine candidate product or business names as part of the intake pipeline.
 - Class: differentiator
 - Status: active
 - Description: Lumon must help generate, compare, and refine candidate product or business names as part of the intake pipeline.
 - Why it matters: Naming is part of the user’s real process and affects downstream domain and trademark work.
 - Source: user
 - Primary owning slice: M002 (provisional)
-- Supporting slices: none
-- Validation: unmapped
-- Notes: Final choice remains operator-approved.
+- Supporting slices: M002/S03
+- Validation: mapped
+- Notes: M002/S03 proves naming candidates generate as structured artifacts through n8n, render as a selectable list in the dossier, and operator selection triggers downstream domain/trademark signals. Full validation requires S04 live n8n proof.
 
-### R009 — Domain availability and trademark check workflow
+### R009 — Lumon must gather domain availability and trademark/status signals for candidate names before build handoff.
 - Class: integration
 - Status: active
 - Description: Lumon must gather domain availability and trademark/status signals for candidate names before build handoff.
 - Why it matters: Brand decisions should be informed before repo creation and downstream build momentum.
 - Source: user
 - Primary owning slice: M002 (provisional)
-- Supporting slices: M005 (provisional)
-- Validation: unmapped
-- Notes: Research signals are advisory; legal clearance should not be overstated.
+- Supporting slices: M002/S03, M005 (provisional)
+- Validation: mapped
+- Notes: M002/S03 proves domain availability and trademark signal artifacts render with status badges and mandatory advisory disclaimers (D026). Signals are clearly labeled as point-in-time advisory, not legal clearance. Full validation requires S04 live n8n proof.
 
-### R010 — Architecture diagrams, spec files, and prototype package before build
+### R010 — Approved projects must have a tangible handoff package including architecture artifacts, specs, and a small prototype.
 - Class: core-capability
 - Status: active
 - Description: Approved projects must have a tangible handoff package including architecture artifacts, specs, and a small prototype.
@@ -91,7 +81,7 @@ Guidelines:
 - Validation: mapped
 - Notes: M001/S04 now proves the dossier and packet structure, reload-safe detail rendering, and honest missing-state diagnostics; M002 fills it with real outputs.
 
-### R011 — Repo creation and artifact upload for approved projects
+### R011 — Lumon must create a project repository and place the approved artifacts where GSD can consume them.
 - Class: integration
 - Status: active
 - Description: Lumon must create a project repository and place the approved artifacts where GSD can consume them.
@@ -102,7 +92,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: External creation requires explicit confirmation.
 
-### R013 — GSD bootstrap and autonomous handoff
+### R013 — Once approved, Lumon must be able to bootstrap GSD and transfer the project into autonomous execution.
 - Class: integration
 - Status: active
 - Description: Once approved, Lumon must be able to bootstrap GSD and transfer the project into autonomous execution.
@@ -113,7 +103,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: Handoff should preserve the full approved package, not a lossy summary.
 
-### R014 — Independent project isolation with separate repos and workspaces
+### R014 — Projects must be able to run independently with separate repositories and working environments.
 - Class: quality-attribute
 - Status: active
 - Description: Projects must be able to run independently with separate repositories and working environments.
@@ -124,7 +114,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: This is a hard requirement, not optimization.
 
-### R015 — Live visibility into each agent’s current activity
+### R015 — The operator must be able to see what each active agent is doing now and where work is stuck.
 - Class: failure-visibility
 - Status: active
 - Description: The operator must be able to see what each active agent is doing now and where work is stuck.
@@ -135,7 +125,7 @@ Guidelines:
 - Validation: mapped
 - Notes: M001 proves the surface; M004 makes it real.
 
-### R017 — One auto-retry on failure, then pause and escalate
+### R017 — When a research or build stage fails, Lumon should try one bounded recovery pass before pausing and escalating.
 - Class: continuity
 - Status: active
 - Description: When a research or build stage fails, Lumon should try one bounded recovery pass before pausing and escalating.
@@ -146,7 +136,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: Applies to runtime orchestration, not irreversible external actions.
 
-### R018 — Explicit confirmation before irreversible external actions
+### R018 — Repo creation, domain purchase, and similar side effects must wait for explicit operator confirmation.
 - Class: compliance/security
 - Status: active
 - Description: Repo creation, domain purchase, and similar side effects must wait for explicit operator confirmation.
@@ -157,31 +147,20 @@ Guidelines:
 - Validation: unmapped
 - Notes: This applies even if prior stage approvals exist.
 
-### R019 — n8n as first-class workflow orchestrator
+### R019 — n8n must be treated as a real orchestration layer for the research and approval pipeline.
 - Class: integration
 - Status: active
 - Description: n8n must be treated as a real orchestration layer for the research and approval pipeline.
 - Why it matters: The workflow engine is part of the product architecture, not a hidden implementation detail.
 - Source: user
 - Primary owning slice: M002 (provisional)
-- Supporting slices: M001/S03
-- Validation: unmapped
-- Notes: M001 should shape stage contracts so n8n can attach cleanly later.
+- Supporting slices: M001/S03, M002/S03
+- Validation: mapped
+- Notes: M001 shaped stage contracts; M002/S01 proved webhook→Wait→resume loop; M002/S02 extended to research sub-workflows; M002/S03 extended to plan sub-workflows with compound webhook routing and context forwarding. Full validation requires S04 end-to-end pipeline proof.
 
 ## Validated
 
-### R020 — Severance-inspired control-room presentation
-- Class: differentiator
-- Status: validated
-- Description: Lumon must preserve and deepen the Severance-like atmosphere as part of the operator experience.
-- Why it matters: The visual identity is part of what makes the product feel like Lumon rather than a generic dashboard.
-- Source: user
-- Primary owning slice: M001/S05
-- Supporting slices: M001/S01, M001/S06
-- Validation: validated
-- Notes: M001/S05 proves the Severance floor renders pipeline-aware department room tones, persistent shell indicators for stuck projects, and pipeline diagnostics panels — all maintaining the control-room aesthetic while making approval-aware pipeline state legible.
-
-### R001 — Single-operator mission control dashboard
+### R001 — Lumon must operate as a control room for one owner-operator managing many software-product initiatives.
 - Class: primary-user-loop
 - Status: validated
 - Description: Lumon must operate as a control room for one owner-operator managing many software-product initiatives.
@@ -192,7 +171,7 @@ Guidelines:
 - Validation: validated
 - Notes: Multi-operator support is intentionally deferred.
 
-### R002 — Multi-project registry and lifecycle tracking
+### R002 — The operator must be able to create, store, browse, and revisit multiple projects with clear lifecycle state.
 - Class: core-capability
 - Status: validated
 - Description: The operator must be able to create, store, browse, and revisit multiple projects with clear lifecycle state.
@@ -203,7 +182,7 @@ Guidelines:
 - Validation: validated
 - Notes: Proven in M001/S02 through canonical project creation, versioned local persistence, selection-safe restore, and live browser reload verification.
 
-### R003 — Stage-based intake pipeline from idea to build handoff
+### R003 — Every project must move through an explicit pre-build pipeline before it can be handed to GSD.
 - Class: primary-user-loop
 - Status: validated
 - Description: Every project must move through an explicit pre-build pipeline before it can be handed to GSD.
@@ -214,7 +193,7 @@ Guidelines:
 - Validation: validated
 - Notes: M001/S03 proves a canonical intake→handoff stage model, approval-aware progression, reload-safe persistence, and live dashboard/orchestration visibility across the real app.
 
-### R012 — Execution-engine selection per project
+### R012 — Each project must carry an explicit execution-engine choice between Claude Code and Codex.
 - Class: core-capability
 - Status: validated
 - Description: Each project must carry an explicit execution-engine choice between Claude Code and Codex.
@@ -225,7 +204,7 @@ Guidelines:
 - Validation: validated
 - Notes: M001/S02 proves engine choice is stored, rendered, and restored per project; M003 will consume it for real handoff behavior.
 
-### R016 — Dashboard-first stage and agent status visibility
+### R016 — The main dashboard must prioritize pipeline stage state and agent state across projects.
 - Class: operability
 - Status: validated
 - Description: The main dashboard must prioritize pipeline stage state and agent state across projects.
@@ -236,10 +215,20 @@ Guidelines:
 - Validation: validated
 - Notes: M001/S03 proves the dashboard and orchestration surfaces now lead with shared stage, gate, and approval-aware status truth while agent detail remains secondary.
 
+### R020 — Lumon must preserve and deepen the Severance-like atmosphere as part of the operator experience.
+- Class: differentiator
+- Status: validated
+- Description: Lumon must preserve and deepen the Severance-like atmosphere as part of the operator experience.
+- Why it matters: The visual identity is part of what makes the product feel like Lumon rather than a generic dashboard.
+- Source: user
+- Primary owning slice: M001/S05
+- Supporting slices: M001/S01, M001/S06
+- Validation: validated
+- Notes: M001/S05 proves the Severance floor renders pipeline-aware department room tones, persistent shell indicators for stuck projects, and pipeline diagnostics panels — all maintaining the control-room aesthetic while making approval-aware pipeline state legible.
 
 ## Deferred
 
-### R021 — Multi-operator collaboration and shared control
+### R021 — More than one operator can share control, visibility, and approval authority inside Lumon.
 - Class: admin/support
 - Status: deferred
 - Description: More than one operator can share control, visibility, and approval authority inside Lumon.
@@ -250,7 +239,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: Revisit after the single-operator loop is solid.
 
-### R022 — Production-grade auth, roles, and governance
+### R022 — Lumon supports robust authentication, authorization, role separation, and governance controls.
 - Class: compliance/security
 - Status: deferred
 - Description: Lumon supports robust authentication, authorization, role separation, and governance controls.
@@ -261,7 +250,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: Not required for the first single-operator milestone.
 
-### R023 — Full cost and usage telemetry across agents and projects
+### R023 — Lumon provides consolidated cost, token, and resource visibility across the portfolio.
 - Class: admin/support
 - Status: deferred
 - Description: Lumon provides consolidated cost, token, and resource visibility across the portfolio.
@@ -272,7 +261,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: Surface only what is necessary before this becomes primary focus.
 
-### R024 — Cloud or distributed runtime beyond local-first orchestration
+### R024 — Lumon can supervise builds beyond a single local-first operator machine.
 - Class: quality-attribute
 - Status: deferred
 - Description: Lumon can supervise builds beyond a single local-first operator machine.
@@ -283,7 +272,7 @@ Guidelines:
 - Validation: unmapped
 - Notes: Current architecture direction remains local-first.
 
-### R025 — Automated domain purchase execution after confirmation
+### R025 — After explicit operator confirmation, Lumon executes supported domain purchases directly.
 - Class: integration
 - Status: deferred
 - Description: After explicit operator confirmation, Lumon executes supported domain purchases directly.
@@ -296,7 +285,7 @@ Guidelines:
 
 ## Out of Scope
 
-### R026 — Client self-service or public multi-tenant Lumon
+### R026 — Outside users manage their own projects inside Lumon as a public product.
 - Class: anti-feature
 - Status: out-of-scope
 - Description: Outside users manage their own projects inside Lumon as a public product.
@@ -307,7 +296,7 @@ Guidelines:
 - Validation: n/a
 - Notes: Could become a future product direction, but not this plan.
 
-### R027 — Non-software venture types as first-class project targets
+### R027 — Lumon treats media businesses, agencies, and unrelated venture types as equal first-class targets from day one.
 - Class: constraint
 - Status: out-of-scope
 - Description: Lumon treats media businesses, agencies, and unrelated venture types as equal first-class targets from day one.
@@ -318,7 +307,7 @@ Guidelines:
 - Validation: n/a
 - Notes: Keeps research, build, and handoff flows coherent.
 
-### R028 — Replacing GSD rather than orchestrating around it
+### R028 — Lumon reimplements GSD instead of bootstrapping and supervising it.
 - Class: anti-feature
 - Status: out-of-scope
 - Description: Lumon reimplements GSD instead of bootstrapping and supervising it.
@@ -329,7 +318,7 @@ Guidelines:
 - Validation: n/a
 - Notes: Lumon is the control plane around GSD, not a GSD clone.
 
-### R029 — Fully autonomous irreversible actions without operator confirmation
+### R029 — Lumon purchases domains, creates repos, or takes similar side effects without an explicit confirmation step.
 - Class: anti-feature
 - Status: out-of-scope
 - Description: Lumon purchases domains, creates repos, or takes similar side effects without an explicit confirmation step.
@@ -351,8 +340,8 @@ Guidelines:
 | R005 | core-capability | active | M002 (provisional) | none | unmapped |
 | R006 | core-capability | active | M002 (provisional) | none | unmapped |
 | R007 | core-capability | active | M002 (provisional) | none | unmapped |
-| R008 | differentiator | active | M002 (provisional) | none | unmapped |
-| R009 | integration | active | M002 (provisional) | M005 (provisional) | unmapped |
+| R008 | differentiator | active | M002 (provisional) | M002/S03 | mapped |
+| R009 | integration | active | M002 (provisional) | M002/S03, M005 (provisional) | mapped |
 | R010 | core-capability | active | M002 (provisional) | M001/S04, M003 (provisional) | mapped |
 | R011 | integration | active | M003 (provisional) | none | unmapped |
 | R012 | core-capability | validated | M001/S02 | M003 (provisional) | validated |
@@ -362,7 +351,7 @@ Guidelines:
 | R016 | operability | validated | M001/S03 | M001/S05, M001/S06, M004 (provisional) | validated |
 | R017 | continuity | active | M004 (provisional) | none | unmapped |
 | R018 | compliance/security | active | M002 (provisional) | M005 (provisional) | unmapped |
-| R019 | integration | active | M002 (provisional) | M001/S03 | unmapped |
+| R019 | integration | active | M002 (provisional) | M001/S03, M002/S03 | mapped |
 | R020 | differentiator | validated | M001/S05 | M001/S01, M001/S06 | validated |
 | R021 | admin/support | deferred | none | none | unmapped |
 | R022 | compliance/security | deferred | M006 (provisional) | none | unmapped |
@@ -377,6 +366,6 @@ Guidelines:
 ## Coverage Summary
 
 - Active requirements: 14
-- Mapped to slices or provisional milestone owners: 20
-- Validated: 6
+- Mapped to slices: 14
+- Validated: 6 (R001, R002, R003, R012, R016, R020)
 - Unmapped active requirements: 0
