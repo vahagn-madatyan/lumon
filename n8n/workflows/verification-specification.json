@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Verification: Specification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-verification-specification",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-verification-specification"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Specification Generation\n// Produces functional/non-functional requirements and API contracts.\n// In production, this node would be replaced with an LLM call.\nconst { projectId, stageKey, executionId, subStage, context } = $input.first().json.body;\n\nconst specification = {\n  functionalRequirements: [\n    {\n      id: \"FR-001\",\n      title: \"User Authentication\",\n      description: \"Users must be able to register, log in, and manage sessions via email/password or OAuth 2.0 providers\",\n      priority: \"high\"\n    },\n    {\n      id: \"FR-002\",\n      title: \"Project Creation\",\n      description: \"Operators must be able to create projects with a name, description, and initial configuration parameters\",\n      priority: \"high\"\n    },\n    {\n      id: \"FR-003\",\n      title: \"Pipeline Execution\",\n      description: \"The system must orchestrate multi-stage pipelines with sequential sub-stage progression and approval gates\",\n      priority: \"high\"\n    },\n    {\n      id: \"FR-004\",\n      title: \"Artifact Storage\",\n      description: \"Each pipeline stage must produce typed artifacts that persist across sessions and are queryable by project and stage\",\n      priority: \"medium\"\n    },\n    {\n      id: \"FR-005\",\n      title: \"Real-time Updates\",\n      description: \"The dashboard must receive live updates via SSE when pipeline state changes or artifacts are produced\",\n      priority: \"medium\"\n    }\n  ],\n  nonFunctionalRequirements: [\n    {\n      category: \"Performance\",\n      requirement: \"API response time under 200ms for read operations at p95\",\n      metric: \"p95 latency ≤ 200ms\"\n    },\n    {\n      category: \"Availability\",\n      requirement: \"System uptime of 99.5% measured monthly\",\n      metric: \"uptime ≥ 99.5%\"\n    },\n    {\n      category: \"Scalability\",\n      requirement: \"Support 100 concurrent pipeline executions without degradation\",\n      metric: \"100 concurrent pipelines, <5% latency increase\"\n    },\n    {\n      category: \"Security\",\n      requirement: \"All API endpoints require authentication; secrets never logged\",\n      metric: \"Zero secret leaks in logs, 100% endpoint auth coverage\"\n    }\n  ],\n  apiContracts: [\n    {\n      endpoint: \"/api/pipeline/trigger\",\n      method: \"POST\",\n      description: \"Trigger a pipeline stage execution. Body: { projectId, stageKey, subStage?, context? }. Returns 201 with executionId.\"\n    },\n    {\n      endpoint: \"/api/pipeline/callback\",\n      method: \"POST\",\n      description: \"Receive n8n workflow results. Body: { executionId, projectId, stageKey, result, resumeUrl?, subStage? }. Returns artifact ID.\"\n    },\n    {\n      endpoint: \"/api/pipeline/approve\",\n      method: \"POST\",\n      description: \"Approve or reject a stage. Body: { projectId, stageKey, decision }. May auto-trigger next stage.\"\n    },\n    {\n      endpoint: \"/api/pipeline/status/:projectId\",\n      method: \"GET\",\n      description: \"Get per-stage execution state for a project. Returns stages map with status, subStage, timestamps.\"\n    },\n    {\n      endpoint: \"/api/artifacts/project/:projectId/stage/:stageKey\",\n      method: \"GET\",\n      description: \"List all artifacts for a project and stage. Returns array of { id, type, content, metadata }.\"\n    }\n  ],\n  recommendation: \"The specification covers the core MVP scope. Defer advanced features (RBAC, audit logging, multi-tenant isolation) to post-launch iterations. Prioritize pipeline orchestration reliability over feature breadth.\"\n};\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'specification',\n    specificationResult: specification\n  }\n};"
+      },
+      "id": "specification-analysis",
+      "name": "Specification Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'specification', content: $json.specificationResult, metadata: { engine: 'n8n-verification-specification-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Specification Analysis", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Specification Analysis": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-16T00:00:00.000Z",
+  "versionId": "1"
+}

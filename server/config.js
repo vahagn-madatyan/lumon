@@ -16,6 +16,10 @@ const STAGE_ENV_MAP = {
   naming: "N8N_WEBHOOK_URL_NAMING",
   branding: "N8N_WEBHOOK_URL_BRANDING",
   architecture: "N8N_WEBHOOK_URL_ARCHITECTURE",
+  verification: "N8N_WEBHOOK_URL_VERIFICATION",
+  verification_architecture_outline: "N8N_WEBHOOK_URL_VERIFICATION_ARCHITECTURE",
+  verification_specification: "N8N_WEBHOOK_URL_VERIFICATION_SPECIFICATION",
+  verification_prototype_scaffold: "N8N_WEBHOOK_URL_VERIFICATION_PROTOTYPE",
 };
 
 /** Sub-stage execution order for the research stage. */
@@ -23,6 +27,9 @@ export const RESEARCH_SUB_STAGES = ["business_plan", "tech_stack"];
 
 /** Sub-stage execution order for the plan stage. */
 export const PLAN_SUB_STAGES = ["naming_candidates", "domain_signals", "trademark_signals"];
+
+/** Sub-stage execution order for the verification stage. */
+export const VERIFICATION_SUB_STAGES = ["architecture_outline", "specification", "prototype_scaffold"];
 
 /**
  * Look up the webhook URL for a given pipeline stage.

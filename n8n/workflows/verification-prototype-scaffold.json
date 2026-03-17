@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Verification: Prototype Scaffold",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-verification-prototype",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-verification-prototype"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prototype Scaffold Generation\n// Produces a project structure, entry points, and dependency list.\n// In production, this node would be replaced with an LLM call.\nconst { projectId, stageKey, executionId, subStage, context } = $input.first().json.body;\n\nconst prototypeScaffold = {\n  projectStructure: \"project-root/\\n├── package.json\\n├── tsconfig.json\\n├── docker-compose.yml\\n├── .env.example\\n├── src/\\n│   ├── index.ts              # Application entry point\\n│   ├── config.ts             # Environment configuration\\n│   ├── server.ts             # Express server setup\\n│   ├── routes/\\n│   │   ├── pipeline.ts       # Pipeline trigger/callback/approve\\n│   │   ├── artifacts.ts      # Artifact CRUD\\n│   │   └── health.ts         # Health check endpoint\\n│   ├── services/\\n│   │   ├── pipeline.ts       # Pipeline orchestration logic\\n│   │   ├── artifacts.ts      # Artifact storage service\\n│   │   └── webhook.ts        # n8n webhook integration\\n│   ├── models/\\n│   │   ├── execution.ts      # Pipeline execution model\\n│   │   └── artifact.ts       # Artifact model\\n│   └── utils/\\n│       ├── logger.ts         # Structured logging\\n│       └── errors.ts         # Error classes\\n├── test/\\n│   ├── pipeline.test.ts\\n│   ├── artifacts.test.ts\\n│   └── integration.test.ts\\n└── n8n/\\n    └── workflows/            # Importable n8n templates\",\n  entryPoints: [\n    {\n      file: \"src/index.ts\",\n      purpose: \"Application bootstrap — initializes config, connects services, starts HTTP server\"\n    },\n    {\n      file: \"src/server.ts\",\n      purpose: \"Express app configuration — middleware, routes, error handling, SSE setup\"\n    },\n    {\n      file: \"src/routes/pipeline.ts\",\n      purpose: \"Pipeline REST API — trigger, callback, approve, status endpoints\"\n    }\n  ],\n  dependencies: [\n    { name: \"express\", version: \"^4.18.0\", purpose: \"HTTP server and routing\" },\n    { name: \"typescript\", version: \"^5.4.0\", purpose: \"Type safety and compile-time checks\" },\n    { name: \"vitest\", version: \"^1.6.0\", purpose: \"Test runner with ESM support\" },\n    { name: \"zod\", version: \"^3.23.0\", purpose: \"Runtime schema validation for API payloads\" },\n    { name: \"pino\", version: \"^9.0.0\", purpose: \"Structured JSON logging\" },\n    { name: \"dotenv\", version: \"^16.4.0\", purpose: \"Environment variable loading\" },\n    { name: \"supertest\", version: \"^7.0.0\", purpose: \"HTTP integration testing\" }\n  ],\n  setupInstructions: \"1. Clone the repository\\n2. Copy .env.example to .env and configure webhook URLs\\n3. Run `npm install` to install dependencies\\n4. Run `npm run dev` to start the development server\\n5. Import n8n workflow templates from n8n/workflows/\\n6. Run `npm test` to execute the test suite\",\n  recommendation: \"Start with the scaffold as-is for the MVP. Add TypeScript strict mode, ESLint, and Prettier in the first iteration. Defer database integration — use in-memory stores for the prototype phase and migrate to PostgreSQL when persistence requirements are validated.\"\n};\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'prototype_scaffold',\n    prototypeResult: prototypeScaffold\n  }\n};"
+      },
+      "id": "prototype-scaffold-analysis",
+      "name": "Prototype Scaffold Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'prototype_scaffold', content: $json.prototypeResult, metadata: { engine: 'n8n-verification-prototype-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Prototype Scaffold Analysis", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Prototype Scaffold Analysis": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-16T00:00:00.000Z",
+  "versionId": "1"
+}

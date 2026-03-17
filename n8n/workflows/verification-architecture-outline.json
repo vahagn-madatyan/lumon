@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Verification: Architecture Outline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-verification-architecture",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-verification-architecture"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Architecture Outline Generation\n// Produces a high-level system architecture for the project.\n// In production, this node would be replaced with an LLM call.\nconst { projectId, stageKey, executionId, subStage, context } = $input.first().json.body;\n\nconst architectureOutline = {\n  systemOverview: \"A cloud-native SaaS platform built on a modular microservices architecture. The system separates concerns into an API gateway, core business logic services, an event bus for async communication, and a persistence layer with read/write separation. Designed for horizontal scalability and independent service deployment.\",\n  components: [\n    {\n      name: \"API Gateway\",\n      responsibility: \"Request routing, authentication, rate limiting, and API versioning\",\n      technology: \"Node.js with Express, nginx reverse proxy\"\n    },\n    {\n      name: \"Core Service\",\n      responsibility: \"Business logic, domain model enforcement, and workflow orchestration\",\n      technology: \"Node.js with TypeScript, Domain-Driven Design patterns\"\n    },\n    {\n      name: \"Event Bus\",\n      responsibility: \"Async event distribution, saga orchestration, and cross-service communication\",\n      technology: \"Redis Streams with dead-letter queue support\"\n    },\n    {\n      name: \"Data Layer\",\n      responsibility: \"Persistent storage with CQRS read/write separation\",\n      technology: \"PostgreSQL (write), Redis (read cache), S3 (blob storage)\"\n    },\n    {\n      name: \"Dashboard UI\",\n      responsibility: \"Operator interface for monitoring, configuration, and manual overrides\",\n      technology: \"React with Vite, TanStack Query for server state\"\n    }\n  ],\n  dataFlow: \"Client requests enter through the API Gateway, which authenticates and routes to the appropriate Core Service. Services emit domain events to the Event Bus for async processing. The Data Layer handles persistence with write-ahead logging to PostgreSQL and read-through caching via Redis. The Dashboard UI connects via REST APIs and SSE for real-time updates.\",\n  deploymentModel: \"Containerized deployment via Docker Compose for development, with Kubernetes manifests for production. CI/CD pipeline builds, tests, and deploys each service independently. Blue-green deployment strategy with automatic rollback on health check failure.\",\n  recommendation: \"Proceed with the modular architecture. Start with a monolithic deployment (single container) and extract services as complexity warrants. This avoids premature distribution overhead while maintaining clean module boundaries.\"\n};\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'architecture_outline',\n    architectureResult: architectureOutline\n  }\n};"
+      },
+      "id": "architecture-outline-analysis",
+      "name": "Architecture Outline Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'architecture_outline', content: $json.architectureResult, metadata: { engine: 'n8n-verification-architecture-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Architecture Outline Analysis", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Architecture Outline Analysis": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-16T00:00:00.000Z",
+  "versionId": "1"
+}

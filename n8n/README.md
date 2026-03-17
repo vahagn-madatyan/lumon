@@ -177,6 +177,68 @@ If `context.selectedName` is missing (e.g., during testing), both domain and tra
                                                           plan gate ready
 ```
 
+## Verification Stage Workflows
+
+The verification stage runs three sequential sub-workflows that produce architecture, specification, and prototype artifacts. The bridge server orchestrates them in order: **architecture_outline → specification → prototype_scaffold**, forwarding context through the chain. Verification auto-triggers after plan approval (when a webhook is configured).
+
+### Import the Verification Workflows
+
+1. Import all three JSON files from `n8n/workflows/`:
+   - `verification-architecture-outline.json` — generates system architecture outline
+   - `verification-specification.json` — generates functional/non-functional requirements and API contracts
+   - `verification-prototype-scaffold.json` — generates project structure, dependencies, and setup instructions
+2. **Activate** each workflow after import.
+
+### Webhook Paths
+
+| Workflow | Webhook Path | Env Var |
+|----------|-------------|---------|
+| Architecture Outline | `lumon-verification-architecture` | `N8N_WEBHOOK_URL_VERIFICATION_ARCHITECTURE` |
+| Specification | `lumon-verification-specification` | `N8N_WEBHOOK_URL_VERIFICATION_SPECIFICATION` |
+| Prototype Scaffold | `lumon-verification-prototype` | `N8N_WEBHOOK_URL_VERIFICATION_PROTOTYPE` |
+
+### Environment Variables
+
+Set these in your `.env` or export before starting the bridge server:
+
+```bash
+N8N_WEBHOOK_URL_VERIFICATION_ARCHITECTURE=http://localhost:5678/webhook/lumon-verification-architecture
+N8N_WEBHOOK_URL_VERIFICATION_SPECIFICATION=http://localhost:5678/webhook/lumon-verification-specification
+N8N_WEBHOOK_URL_VERIFICATION_PROTOTYPE=http://localhost:5678/webhook/lumon-verification-prototype
+```
+
+### Verification Sub-Stage Flow
+
+```
+Plan approved → auto-trigger verification
+        │
+        ▼
+┌─────────────┐  trigger   ┌──────────────────────┐  callback   ┌─────────────┐
+│   Bridge    │ ─────────► │ Architecture Outline  │ ──────────► │   Bridge    │
+│(verification│            │  (n8n workflow)       │             │  records    │
+│)            │            └──────────────────────┘             │  artifact   │
+└─────────────┘                                                 └──────┬──────┘
+                                                                       │
+                                                      auto-fire next   │
+                                                                       ▼
+┌─────────────┐  trigger   ┌──────────────────────┐  callback   ┌─────────────┐
+│   Bridge    │ ─────────► │ Specification        │ ──────────► │   Bridge    │
+│(verification│            │  (n8n workflow)       │             │  records    │
+│)            │            └──────────────────────┘             │  artifact   │
+└─────────────┘                                                 └──────┬──────┘
+                                                                       │
+                                                      auto-fire next   │
+                                                                       ▼
+┌─────────────┐  trigger   ┌──────────────────────┐  callback   ┌─────────────┐
+│   Bridge    │ ─────────► │ Prototype Scaffold   │ ──────────► │   Bridge    │
+│(verification│            │  (n8n workflow)       │             │  records    │
+│)            │            └──────────────────────┘             │  artifact   │
+└─────────────┘                                                 └──────┬──────┘
+                                                                       │
+                                                                       ▼
+                                                          verification gate ready
+```
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

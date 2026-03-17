@@ -30,6 +30,7 @@
 - `server/__tests__/rejection-iteration.test.js` — reject → re-trigger → approve lifecycle, multi-artifact state integrity after rejection
 - `server/__tests__/full-pipeline.test.js` — end-to-end pipeline from intake through all stages to handoff_ready state
 - `npx vite build` — production build succeeds
+- `server/__tests__/verification-pipeline.test.js` includes tests for webhook failure recording via `pipeline.recordFailure()` — verifies failureReason is stored and inspectable for failed verification sub-stage webhook calls
 
 ## Observability / Diagnostics
 
@@ -46,7 +47,7 @@
 
 ## Tasks
 
-- [ ] **T01: Wire verification stage orchestration and ship n8n workflow templates** `est:30m`
+- [x] **T01: Wire verification stage orchestration and ship n8n workflow templates** `est:30m`
   - Why: The verification stage (architecture_outline → specification → prototype_scaffold) needs the same server-side orchestration pattern proven for research and plan stages. Without this, the pipeline stops at plan approval and no architecture artifacts reach the handoff packet.
   - Files: `server/config.js`, `server/routes/pipeline.js`, `n8n/workflows/verification-architecture-outline.json`, `n8n/workflows/verification-specification.json`, `n8n/workflows/verification-prototype-scaffold.json`, `n8n/README.md`, `server/__tests__/verification-pipeline.test.js`
   - Do: Add `VERIFICATION_SUB_STAGES` to config.js with compound STAGE_ENV_MAP entries. Add verification sequential orchestration block in callback handler (copy plan pattern). Add auto-trigger from plan approval to verification in approve handler. Create 3 n8n workflow templates with realistic mock output. Write contract tests covering config, webhooks, sequential progression, auto-trigger, and backward compatibility.

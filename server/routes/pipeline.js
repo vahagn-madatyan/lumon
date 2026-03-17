@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as artifacts from "../artifacts.js";
 import * as pipeline from "../pipeline.js";
-import { getWebhookUrl, RESEARCH_SUB_STAGES, PLAN_SUB_STAGES } from "../config.js";
+import { getWebhookUrl, RESEARCH_SUB_STAGES, PLAN_SUB_STAGES, VERIFICATION_SUB_STAGES } from "../config.js";
 
 const router = Router();
 
@@ -153,6 +153,8 @@ router.post("/trigger", async (req, res) => {
     effectiveSubStage = RESEARCH_SUB_STAGES[0];
   } else if (stageKey === "plan" && !subStage) {
     effectiveSubStage = PLAN_SUB_STAGES[0];
+  } else if (stageKey === "verification" && !subStage) {
+    effectiveSubStage = VERIFICATION_SUB_STAGES[0];
   }
 
   const { execution, error } = await fireWebhook({
@@ -277,6 +279,32 @@ router.post("/callback", async (req, res) => {
     }
   }
 
+  // Sequential orchestration: if this is a verification sub-stage, check for next and forward context
+  if (stageKey === "verification" && subStage) {
+    const currentIndex = VERIFICATION_SUB_STAGES.indexOf(subStage);
+    const nextSubStage = currentIndex >= 0 && currentIndex < VERIFICATION_SUB_STAGES.length - 1
+      ? VERIFICATION_SUB_STAGES[currentIndex + 1]
+      : null;
+
+    if (nextSubStage) {
+      // Read context from the current execution and forward it to the next sub-stage
+      const currentContext = execution.context || null;
+      console.log(`[bridge] sequential-next subStage=${nextSubStage} after=${subStage}`);
+      const { execution: nextExec, error: nextError } = await fireWebhook({
+        projectId,
+        stageKey: "verification",
+        subStage: nextSubStage,
+        context: currentContext,
+      });
+
+      if (nextError) {
+        console.log(`[bridge] sequential-next subStage=${nextSubStage} failed: ${nextError}`);
+      } else {
+        nextTriggered = { executionId: nextExec.executionId, subStage: nextSubStage };
+      }
+    }
+  }
+
   res.json({ ok: true, artifactId: artifact.id, nextTriggered });
 });
 
@@ -345,6 +373,32 @@ router.post("/approve", async (req, res) => {
       }
     } else {
       console.log(`[bridge] auto-trigger research skipped — no webhook configured projectId=${projectId}`);
+    }
+  }
+
+  // Auto-trigger verification after plan approval
+  if (decision === "approved" && stageKey === "plan") {
+    const verificationWebhookUrl = getWebhookUrl("verification");
+    if (verificationWebhookUrl) {
+      console.log(`[bridge] auto-trigger verification after plan approval projectId=${projectId}`);
+      const { execution: verificationExec, error: verificationError } = await fireWebhook({
+        projectId,
+        stageKey: "verification",
+        subStage: VERIFICATION_SUB_STAGES[0],
+      });
+
+      if (verificationError) {
+        console.log(`[bridge] auto-trigger verification failed: ${verificationError}`);
+      } else {
+        autoTriggered = { stageKey: "verification", executionId: verificationExec.executionId, subStage: VERIFICATION_SUB_STAGES[0] };
+
+        emitSSE(projectId, "pipeline-status", {
+          stageKey: "verification",
+          data: { status: "triggered", executionId: verificationExec.executionId, subStage: VERIFICATION_SUB_STAGES[0] },
+        });
+      }
+    } else {
+      console.log(`[bridge] auto-trigger verification skipped — no webhook configured projectId=${projectId}`);
     }
   }
 
