@@ -78,6 +78,13 @@ This is the critical path for S03 — the naming selection UI, n8n templates, an
 - New test file covers: compound webhook lookups, plan trigger defaults, sequential orchestration through all 3 sub-stages, context forwarding, backward compatibility
 - Existing `research-pipeline.test.js` passes unchanged
 
+## Observability Impact
+
+- **New log lines:** `[bridge] sequential-next subStage=domain_signals after=naming_candidates` and `[bridge] sequential-next subStage=trademark_signals after=domain_signals` trace plan sub-stage progression through the callback handler chain.
+- **Webhook registry logging:** `[bridge] webhook-registry stageKey=plan source=compound` when a compound key (`plan_naming`, `plan_domain`, `plan_trademark`) resolves; falls back to existing `source=stage-specific` / `source=global-fallback` / `source=none` lines.
+- **Inspection:** `GET /api/pipeline/status/:projectId` returns execution records that now include `context` field on plan sub-stage executions, allowing agents to verify context propagation.
+- **Failure visibility:** `pipeline.recordFailure()` captures `failureReason` per execution. Context forwarding failures are visible when downstream execution records have `context: null` unexpectedly.
+
 ## Inputs
 
 - `server/config.js` — current webhook registry with `STAGE_ENV_MAP` and `RESEARCH_SUB_STAGES`

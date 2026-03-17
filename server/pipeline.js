@@ -16,10 +16,10 @@ const projectIndex = new Map();
 
 /**
  * Create a new pipeline execution for a project + stage.
- * @param {{ projectId: string, stageKey: string, subStage?: string }} params
+ * @param {{ projectId: string, stageKey: string, subStage?: string, context?: object }} params
  * @returns {object} The execution record
  */
-export function trigger({ projectId, stageKey, subStage = null }) {
+export function trigger({ projectId, stageKey, subStage = null, context = null }) {
   const executionId = randomUUID();
   const record = {
     projectId,
@@ -27,6 +27,7 @@ export function trigger({ projectId, stageKey, subStage = null }) {
     status: "triggered",
     stageKey,
     subStage,
+    context: context || null,
     n8nExecutionId: null,
     resumeUrl: null,
     triggeredAt: new Date().toISOString(),

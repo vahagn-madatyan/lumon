@@ -44,7 +44,7 @@
 
 ## Tasks
 
-- [ ] **T01: Wire plan sub-stage orchestration with context forwarding on the bridge server** `est:20m`
+- [x] **T01: Wire plan sub-stage orchestration with context forwarding on the bridge server** `est:20m`
   - Why: The plan stage needs the same sequential sub-stage orchestration as research — naming_candidates → domain_signals → trademark_signals — plus a new `context` field that lets the selected name propagate through the chain. This is the critical path: renderers and n8n templates depend on the server accepting plan sub-stages with context.
   - Files: `server/config.js`, `server/pipeline.js`, `server/routes/pipeline.js`, `server/__tests__/naming-pipeline.test.js`
   - Do: (1) Add `PLAN_SUB_STAGES` array and compound webhook entries (`plan_naming`, `plan_domain`, `plan_trademark`) to config.js. Extend `getWebhookUrl()` to check `stageKey_subStage` compound keys before stageKey-level lookup. (2) Add optional `context` field to pipeline.js execution record in `trigger()`. (3) In routes/pipeline.js trigger handler: default plan stage to `naming_candidates` sub-stage (same as research pattern), forward `req.body.context` in webhook payload. In callback handler: add plan sequential orchestration with context forwarding from execution record. (4) Write comprehensive contract tests in `naming-pipeline.test.js`.

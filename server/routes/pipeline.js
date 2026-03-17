@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as artifacts from "../artifacts.js";
 import * as pipeline from "../pipeline.js";
-import { getWebhookUrl, RESEARCH_SUB_STAGES } from "../config.js";
+import { getWebhookUrl, RESEARCH_SUB_STAGES, PLAN_SUB_STAGES } from "../config.js";
 
 const router = Router();
 
@@ -85,12 +85,12 @@ router.get("/events/:projectId", (req, res) => {
 /**
  * Fire an n8n webhook for a given stage. Creates a pipeline execution record,
  * POSTs to the webhook, and handles failures.
- * @param {{ projectId: string, stageKey: string, subStage?: string }} params
+ * @param {{ projectId: string, stageKey: string, subStage?: string, context?: object }} params
  * @returns {Promise<{ execution: object, error?: string }>}
  */
-async function fireWebhook({ projectId, stageKey, subStage = null }) {
-  const execution = pipeline.trigger({ projectId, stageKey, subStage });
-  const webhookUrl = getWebhookUrl(stageKey);
+async function fireWebhook({ projectId, stageKey, subStage = null, context = null }) {
+  const execution = pipeline.trigger({ projectId, stageKey, subStage, context });
+  const webhookUrl = getWebhookUrl(stageKey, subStage);
 
   if (!webhookUrl) {
     console.log(`[bridge] fireWebhook projectId=${projectId} stageKey=${stageKey} no webhook configured, recording intent`);
@@ -98,15 +98,18 @@ async function fireWebhook({ projectId, stageKey, subStage = null }) {
   }
 
   try {
+    const body = {
+      projectId,
+      stageKey,
+      subStage: subStage || undefined,
+      executionId: execution.executionId,
+    };
+    if (context) body.context = context;
+
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        stageKey,
-        subStage: subStage || undefined,
-        executionId: execution.executionId,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -138,16 +141,26 @@ async function fireWebhook({ projectId, stageKey, subStage = null }) {
  * Body: { projectId, stageKey, subStage? }
  */
 router.post("/trigger", async (req, res) => {
-  const { projectId, stageKey, subStage } = req.body;
+  const { projectId, stageKey, subStage, context } = req.body;
 
   if (!projectId || !stageKey) {
     return res.status(400).json({ error: "Missing required fields", reason: "projectId and stageKey are required" });
   }
 
-  // For research stage without explicit subStage, start sequential orchestration with first sub-stage
-  const effectiveSubStage = stageKey === "research" && !subStage ? RESEARCH_SUB_STAGES[0] : subStage;
+  // For research/plan stages without explicit subStage, start sequential orchestration with first sub-stage
+  let effectiveSubStage = subStage;
+  if (stageKey === "research" && !subStage) {
+    effectiveSubStage = RESEARCH_SUB_STAGES[0];
+  } else if (stageKey === "plan" && !subStage) {
+    effectiveSubStage = PLAN_SUB_STAGES[0];
+  }
 
-  const { execution, error } = await fireWebhook({ projectId, stageKey, subStage: effectiveSubStage || null });
+  const { execution, error } = await fireWebhook({
+    projectId,
+    stageKey,
+    subStage: effectiveSubStage || null,
+    context: context || null,
+  });
 
   if (error) {
     return res.status(502).json({ error: "n8n webhook failed", reason: error });
@@ -228,6 +241,32 @@ router.post("/callback", async (req, res) => {
         projectId,
         stageKey: "research",
         subStage: nextSubStage,
+      });
+
+      if (nextError) {
+        console.log(`[bridge] sequential-next subStage=${nextSubStage} failed: ${nextError}`);
+      } else {
+        nextTriggered = { executionId: nextExec.executionId, subStage: nextSubStage };
+      }
+    }
+  }
+
+  // Sequential orchestration: if this is a plan sub-stage, check for next and forward context
+  if (stageKey === "plan" && subStage) {
+    const currentIndex = PLAN_SUB_STAGES.indexOf(subStage);
+    const nextSubStage = currentIndex >= 0 && currentIndex < PLAN_SUB_STAGES.length - 1
+      ? PLAN_SUB_STAGES[currentIndex + 1]
+      : null;
+
+    if (nextSubStage) {
+      // Read context from the current execution and forward it to the next sub-stage
+      const currentContext = execution.context || null;
+      console.log(`[bridge] sequential-next subStage=${nextSubStage} after=${subStage}`);
+      const { execution: nextExec, error: nextError } = await fireWebhook({
+        projectId,
+        stageKey: "plan",
+        subStage: nextSubStage,
+        context: currentContext,
       });
 
       if (nextError) {
