@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Plan: Domain Availability Signals",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-plan-domain",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-plan-domain"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Domain Availability Check\n// Reads the operator-selected name from context and generates simulated\n// domain availability results across common TLDs.\n// In production, replace this with Domainr API, Namecheap API, or similar.\nconst body = $input.first().json.body;\nconst { projectId, stageKey, executionId, subStage } = body;\nconst selectedName = body.context?.selectedName || 'Nexus';\n\nconst baseName = selectedName.toLowerCase().replace(/[^a-z0-9]/g, '');\n\nconst signals = [\n  {\n    domain: `${baseName}.com`,\n    status: \"taken\",\n    registrar: \"GoDaddy\",\n    price: null\n  },\n  {\n    domain: `${baseName}.io`,\n    status: \"premium\",\n    registrar: \"Namecheap\",\n    price: \"$2,495\"\n  },\n  {\n    domain: `${baseName}.dev`,\n    status: \"available\",\n    registrar: \"Google Domains\",\n    price: \"$12/yr\"\n  },\n  {\n    domain: `${baseName}.co`,\n    status: \"taken\",\n    registrar: \"Hover\",\n    price: null\n  },\n  {\n    domain: `${baseName}.app`,\n    status: \"available\",\n    registrar: \"Google Domains\",\n    price: \"$14/yr\"\n  },\n  {\n    domain: `${baseName}.ai`,\n    status: \"premium\",\n    registrar: \"Porkbun\",\n    price: \"$4,999\"\n  }\n];\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'domain_signals',\n    domainResult: {\n      selectedName,\n      signals,\n      checkedAt: new Date().toISOString(),\n      disclaimer: \"Domain availability is a point-in-time check. Results may change.\"\n    }\n  }\n};"
+      },
+      "id": "domain-availability-check",
+      "name": "Domain Availability Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'domain_signals', content: $json.domainResult, metadata: { engine: 'n8n-plan-domain-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Domain Availability Check", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Domain Availability Check": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-16T00:00:00.000Z",
+  "versionId": "1"
+}

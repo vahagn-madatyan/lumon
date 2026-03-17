@@ -61,6 +61,14 @@ These templates produce realistic mock data in their Code nodes. In production, 
 - Each workflow has 4 nodes and correct connection structure
 - README has new plan workflow section
 
+## Observability Impact
+
+- **n8n workflow import validation:** Each JSON template can be validated with `node -e "JSON.parse(require('fs').readFileSync('...'))"` — a parse error means the template is malformed.
+- **Webhook path discovery:** Each workflow's Webhook Trigger node declares its `path` field — an agent can grep for `"path": "lumon-plan-*"` to verify webhook paths match the bridge server's `STAGE_ENV_MAP` compound keys.
+- **Callback URL consistency:** All three Callback nodes must target `http://host.docker.internal:3001/api/pipeline/callback` — a future agent can verify this with `grep -r "host.docker.internal" n8n/workflows/plan-*.json`.
+- **Content schema signals:** The Code node output shape (candidates array, domain signals array, trademark signals array) must match what client renderers expect. A schema mismatch surfaces as render errors in the browser console.
+- **Failure shapes:** If a workflow template has malformed JSON, n8n import fails silently. If the Code node output doesn't match the callback body shape, the bridge receives a malformed artifact and `pipeline.recordFailure()` captures the mismatch.
+
 ## Inputs
 
 - `n8n/workflows/research-business-plan.json` — reference for JSON structure, node types, versions, and connection format

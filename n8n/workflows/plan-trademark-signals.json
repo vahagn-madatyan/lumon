@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Plan: Trademark Search Signals",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-plan-trademark",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-plan-trademark"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Trademark Search Signals\n// Reads the operator-selected name from context and generates simulated\n// USPTO TESS-style trademark search results.\n// In production, replace with USPTO TSDR API, Corsearch, TrademarkNow, or similar.\nconst body = $input.first().json.body;\nconst { projectId, stageKey, executionId, subStage } = body;\nconst selectedName = body.context?.selectedName || 'Nexus';\n\nconst signals = [\n  {\n    mark: selectedName.toUpperCase(),\n    status: \"live\",\n    class: \"009 — Computer software\",\n    registrationNumber: \"5,847,321\",\n    owner: \"Nexus Technologies LLC\",\n    filingDate: \"2019-03-15\"\n  },\n  {\n    mark: `${selectedName.toUpperCase()} LABS`,\n    status: \"dead\",\n    class: \"042 — Computer services\",\n    registrationNumber: \"4,221,098\",\n    owner: \"Defunct Corp\",\n    filingDate: \"2014-07-22\"\n  },\n  {\n    mark: `${selectedName.toUpperCase()} AI`,\n    status: \"pending\",\n    class: \"009 — Computer software\",\n    registrationNumber: null,\n    owner: \"AI Ventures Inc\",\n    filingDate: \"2025-11-03\"\n  },\n  {\n    mark: selectedName.toUpperCase(),\n    status: \"live\",\n    class: \"035 — Advertising and business\",\n    registrationNumber: \"6,102,445\",\n    owner: \"Nexus Marketing Group\",\n    filingDate: \"2021-06-10\"\n  },\n  {\n    mark: `THE ${selectedName.toUpperCase()} PROJECT`,\n    status: \"dead\",\n    class: \"041 — Education and entertainment\",\n    registrationNumber: \"3,998,112\",\n    owner: \"Creative Collective LLC\",\n    filingDate: \"2012-01-18\"\n  }\n];\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'trademark_signals',\n    trademarkResult: {\n      selectedName,\n      signals,\n      searchedAt: new Date().toISOString(),\n      disclaimer: \"Trademark signals are advisory only and do not constitute legal advice. Consult a trademark attorney before proceeding.\"\n    }\n  }\n};"
+      },
+      "id": "trademark-search",
+      "name": "Trademark Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'trademark_signals', content: $json.trademarkResult, metadata: { engine: 'n8n-plan-trademark-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Trademark Search", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Trademark Search": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-16T00:00:00.000Z",
+  "versionId": "1"
+}

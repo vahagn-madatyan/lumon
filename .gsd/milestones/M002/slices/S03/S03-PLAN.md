@@ -51,7 +51,7 @@
   - Verify: `npx vitest run` — all 121 existing tests pass plus new naming-pipeline tests. Zero regressions.
   - Done when: Plan sub-stage trigger → callback → sequential next → context forwarding all proven by contract tests. Existing research orchestration unchanged.
 
-- [ ] **T02: Create n8n workflow templates for plan sub-stages** `est:15m`
+- [x] **T02: Create n8n workflow templates for plan sub-stages** `est:15m`
   - Why: The plan stage needs three n8n workflow templates that follow the proven Webhook→Code→Callback pattern: naming candidates, domain signals, and trademark signals. These produce realistic mock data that matches the artifact content schemas the renderers will consume.
   - Files: `n8n/workflows/plan-naming-candidates.json`, `n8n/workflows/plan-domain-signals.json`, `n8n/workflows/plan-trademark-signals.json`, `n8n/README.md`
   - Do: (1) Create three workflow JSON files following the 4-node pattern (Webhook Trigger → Respond to Webhook → Code analysis → Callback to Bridge). Each Code node generates realistic structured data matching the artifact type schema. Naming generates 5-8 candidates with rationale and domain hints. Domain generates per-TLD availability with status (available/taken/premium). Trademark generates search results with status, class, and registration info. (2) Update n8n/README.md with the three new workflow entries, import instructions, and env var names.

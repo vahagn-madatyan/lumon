@@ -1,0 +1,82 @@
+{
+  "name": "Lumon — Plan: Naming Candidates",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lumon-plan-naming",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "lumon-plan-naming"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, executionId: $json.headers?.['x-n8n-execution-id'] || 'n8n-' + Date.now() }) }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Naming Candidates Generation\n// Generates a set of brand name candidates with rationale and style metadata.\n// In production, this node would be replaced with an LLM call or creative naming API.\nconst { projectId, stageKey, executionId, subStage } = $input.first().json.body;\n\nconst candidates = [\n  {\n    name: \"Nexus\",\n    rationale: \"Conveys connection and centrality — a hub where ideas and workflows converge. Short, punchy, and tech-forward.\",\n    domainHint: \"nexus.io likely taken; nexushq.com or getnexus.dev may be available\",\n    styleTags: [\"tech\", \"modern\", \"concise\", \"connectivity\"]\n  },\n  {\n    name: \"Aether\",\n    rationale: \"Evokes the invisible medium that powers everything — fitting for an automation layer that works behind the scenes.\",\n    domainHint: \"aether.dev or useaether.com likely available\",\n    styleTags: [\"ethereal\", \"premium\", \"abstract\", \"infrastructure\"]\n  },\n  {\n    name: \"Catalyst\",\n    rationale: \"Directly communicates acceleration and transformation. Strong B2B signal — implies enabling change without being consumed by it.\",\n    domainHint: \"catalyst.app or catalystops.com worth checking\",\n    styleTags: [\"action\", \"B2B\", \"transformation\", \"energy\"]\n  },\n  {\n    name: \"Meridian\",\n    rationale: \"Suggests a guiding line or peak — a reference point for navigation. Feels established and trustworthy.\",\n    domainHint: \"meridian.co or runmeridian.com may be available\",\n    styleTags: [\"premium\", \"navigation\", \"trust\", \"established\"]\n  },\n  {\n    name: \"Loom\",\n    rationale: \"Weaving together threads of work into a cohesive fabric. Short, memorable, and carries connotations of craft and precision.\",\n    domainHint: \"loom.com taken; tryloom.dev or loomflow.io alternatives\",\n    styleTags: [\"craft\", \"concise\", \"metaphorical\", \"creative\"]\n  },\n  {\n    name: \"Stratum\",\n    rationale: \"A foundational layer — positions the product as infrastructure that everything else builds upon. Scientific and solid.\",\n    domainHint: \"stratum.dev or stratumhq.com worth checking\",\n    styleTags: [\"infrastructure\", \"scientific\", \"foundational\", \"enterprise\"]\n  }\n];\n\nconst methodology = \"Candidates generated via semantic expansion from core product attributes (automation, orchestration, integration). Filtered for memorability (≤3 syllables), domain plausibility, and trademark clearance potential. Style tags derived from brand archetype mapping.\";\n\nreturn {\n  json: {\n    projectId,\n    stageKey,\n    executionId,\n    subStage: subStage || 'naming_candidates',\n    namingResult: {\n      candidates,\n      methodology,\n      generatedAt: new Date().toISOString()\n    }\n  }\n};"
+      },
+      "id": "naming-candidates-analysis",
+      "name": "Naming Candidates Analysis",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:3001/api/pipeline/callback",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ executionId: $json.executionId, projectId: $json.projectId, stageKey: $json.stageKey, subStage: $json.subStage, result: { type: 'naming_candidates', content: $json.namingResult, metadata: { engine: 'n8n-plan-naming-v1' } } }) }}",
+        "options": {}
+      },
+      "id": "callback-to-bridge",
+      "name": "Callback to Bridge",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          { "node": "Respond to Webhook", "type": "main", "index": 0 },
+          { "node": "Naming Candidates Analysis", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Naming Candidates Analysis": {
+      "main": [
+        [
+          { "node": "Callback to Bridge", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-03-16T00:00:00.000Z",
+  "versionId": "1"
+}

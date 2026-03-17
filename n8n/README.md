@@ -109,6 +109,74 @@ The workflow's "Callback to Bridge" node sends results back to the Lumon bridge 
 7. The artifact appears in the Dossier tab under "Stage outputs"
 8. Click **Approve** or **Reject** to complete the loop
 
+## Plan Stage Workflows
+
+The plan stage runs three sequential sub-workflows that produce naming, domain, and trademark artifacts. The bridge server orchestrates them in order: **naming_candidates → domain_signals → trademark_signals**, forwarding context (including the operator-selected name) through the chain.
+
+### Import the Plan Workflows
+
+1. Import all three JSON files from `n8n/workflows/`:
+   - `plan-naming-candidates.json` — generates brand name candidates
+   - `plan-domain-signals.json` — checks domain availability per TLD
+   - `plan-trademark-signals.json` — searches trademark databases
+2. **Activate** each workflow after import.
+
+### Webhook Paths
+
+| Workflow | Webhook Path | Env Var |
+|----------|-------------|---------|
+| Naming Candidates | `lumon-plan-naming` | `N8N_WEBHOOK_URL_PLAN_NAMING` |
+| Domain Signals | `lumon-plan-domain` | `N8N_WEBHOOK_URL_PLAN_DOMAIN` |
+| Trademark Signals | `lumon-plan-trademark` | `N8N_WEBHOOK_URL_PLAN_TRADEMARK` |
+
+### Environment Variables
+
+Set these in your `.env` or export before starting the bridge server:
+
+```bash
+N8N_WEBHOOK_URL_PLAN_NAMING=http://localhost:5678/webhook/lumon-plan-naming
+N8N_WEBHOOK_URL_PLAN_DOMAIN=http://localhost:5678/webhook/lumon-plan-domain
+N8N_WEBHOOK_URL_PLAN_TRADEMARK=http://localhost:5678/webhook/lumon-plan-trademark
+```
+
+### Context Forwarding
+
+The bridge server forwards context through the plan sub-stage chain:
+
+1. **Naming Candidates** — receives the initial trigger. The Code node generates candidates without needing context. The operator selects a name from the results.
+2. **Domain Signals** — receives `context.selectedName` in the webhook payload (the operator's chosen name). The Code node reads this to generate per-name domain availability results.
+3. **Trademark Signals** — also receives `context.selectedName`. The Code node reads this to generate per-name trademark search results.
+
+If `context.selectedName` is missing (e.g., during testing), both domain and trademark workflows fall back to a default name ("Nexus").
+
+### Plan Sub-Stage Flow
+
+```
+┌─────────────┐  trigger   ┌──────────────────┐  callback   ┌─────────────┐
+│   Bridge    │ ─────────► │ Naming Candidates│ ──────────► │   Bridge    │
+│  (plan)     │            │  (n8n workflow)   │             │  records    │
+└─────────────┘            └──────────────────┘             │  artifact   │
+                                                             └──────┬──────┘
+                                                                    │
+                                              operator selects name │
+                                                                    ▼
+┌─────────────┐  trigger   ┌──────────────────┐  callback   ┌─────────────┐
+│   Bridge    │ ─────────► │ Domain Signals   │ ──────────► │   Bridge    │
+│  (context:  │            │  (n8n workflow)   │             │  records    │
+│  selected   │            └──────────────────┘             │  artifact   │
+│  Name)      │                                             └──────┬──────┘
+└─────────────┘                                                    │
+                                                                   ▼
+┌─────────────┐  trigger   ┌──────────────────┐  callback   ┌─────────────┐
+│   Bridge    │ ─────────► │ Trademark Signals│ ──────────► │   Bridge    │
+│  (context:  │            │  (n8n workflow)   │             │  records    │
+│  selected   │            └──────────────────┘             │  artifact   │
+│  Name)      │                                             └──────┬──────┘
+└─────────────┘                                                    │
+                                                                   ▼
+                                                          plan gate ready
+```
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
