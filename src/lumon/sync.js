@@ -123,12 +123,12 @@ export function useServerSync({ projectId, dispatch }) {
    * @param {string} stageKey
    * @returns {Promise<{ executionId: string, status: string } | { error: string }>}
    */
-  const triggerPipeline = useCallback(async (triggerProjectId, stageKey) => {
+  const triggerPipeline = useCallback(async (triggerProjectId, stageKey, extra = {}) => {
     try {
       const res = await fetch("/api/pipeline/trigger", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: triggerProjectId, stageKey }),
+        body: JSON.stringify({ projectId: triggerProjectId, stageKey, ...extra }),
       });
       const data = await res.json();
       if (!res.ok) {

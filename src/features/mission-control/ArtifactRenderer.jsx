@@ -250,6 +250,193 @@ export function TechResearchRenderer({ content }) {
   );
 }
 
+// --- NamingCandidatesRenderer ---
+
+const STYLE_TAG_CLASSES = [
+  "bg-purple-500/15 text-purple-300 border-purple-500/30",
+  "bg-cyan-500/15 text-cyan-300 border-cyan-500/30",
+  "bg-pink-500/15 text-pink-300 border-pink-500/30",
+  "bg-blue-500/15 text-blue-300 border-blue-500/30",
+];
+
+export function NamingCandidatesRenderer({ content, onAction }) {
+  if (!content) return null;
+
+  return (
+    <div className="space-y-2" data-testid="naming-candidates-renderer">
+      {content.methodology && (
+        <CollapsibleSection title="Methodology" testId="naming-methodology">
+          <div className="font-mono text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap">
+            {content.methodology}
+          </div>
+        </CollapsibleSection>
+      )}
+      {Array.isArray(content.candidates) && content.candidates.map((candidate, i) => (
+        <div
+          key={i}
+          className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2.5"
+          data-testid={`naming-candidate-${i}`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1.5 flex-1">
+              <div className="font-mono text-[13px] font-bold text-zinc-100">
+                {candidate.name}
+              </div>
+              {candidate.rationale && (
+                <div className="font-mono text-[10px] text-zinc-400 leading-relaxed">
+                  {candidate.rationale}
+                </div>
+              )}
+              {candidate.domainHint && (
+                <div className="font-mono text-[9px] text-zinc-500">
+                  {candidate.domainHint}
+                </div>
+              )}
+              {Array.isArray(candidate.styleTags) && candidate.styleTags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {candidate.styleTags.map((tag, j) => (
+                    <Badge
+                      key={j}
+                      variant="outline"
+                      className={`font-mono text-[8px] uppercase tracking-[0.08em] ${STYLE_TAG_CLASSES[j % STYLE_TAG_CLASSES.length]}`}
+                      data-testid={`naming-candidate-${i}-tag-${j}`}
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              disabled={!onAction}
+              onClick={() => onAction?.({ type: "select-name", selectedName: candidate.name })}
+              className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-mono text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              data-testid={`naming-candidate-${i}-select`}
+            >
+              Select
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- DomainSignalsRenderer ---
+
+const DOMAIN_STATUS_CLASSES = {
+  available: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  taken: "bg-red-500/15 text-red-300 border-red-500/30",
+  premium: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+};
+
+const DEFAULT_DOMAIN_DISCLAIMER =
+  "Domain availability is a point-in-time advisory signal, not a guaranteed reservation.";
+
+export function DomainSignalsRenderer({ content }) {
+  if (!content) return null;
+
+  return (
+    <div className="space-y-2" data-testid="domain-signals-renderer">
+      <div
+        className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 font-mono text-[10px] text-amber-200 leading-relaxed"
+        data-testid="domain-advisory-disclaimer"
+      >
+        {content.disclaimer || DEFAULT_DOMAIN_DISCLAIMER}
+      </div>
+      {content.selectedName && (
+        <div className="font-mono text-[12px] font-bold text-zinc-200" data-testid="domain-selected-name">
+          {content.selectedName}
+        </div>
+      )}
+      {Array.isArray(content.signals) && content.signals.map((signal, i) => (
+        <div
+          key={i}
+          className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2"
+          data-testid={`domain-signal-${i}`}
+        >
+          <div className="font-mono text-[11px] text-zinc-200">{signal.domain}</div>
+          <div className="flex items-center gap-2">
+            {signal.price && (
+              <span className="font-mono text-[9px] text-zinc-400">{signal.price}</span>
+            )}
+            <Badge
+              variant="outline"
+              className={`font-mono text-[9px] font-bold uppercase tracking-[0.08em] ${DOMAIN_STATUS_CLASSES[signal.status] ?? DOMAIN_STATUS_CLASSES.taken}`}
+              data-testid={`domain-signal-${i}-status`}
+            >
+              {signal.status}
+            </Badge>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// --- TrademarkSignalsRenderer ---
+
+const TRADEMARK_STATUS_CLASSES = {
+  live: "bg-red-500/15 text-red-300 border-red-500/30",
+  dead: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+  pending: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+};
+
+const DEFAULT_TRADEMARK_DISCLAIMER =
+  "Trademark signals are advisory only and do not constitute legal advice. Consult a trademark attorney before proceeding.";
+
+export function TrademarkSignalsRenderer({ content }) {
+  if (!content) return null;
+
+  return (
+    <div className="space-y-2" data-testid="trademark-signals-renderer">
+      <div
+        className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 font-mono text-[10px] text-amber-200 leading-relaxed"
+        data-testid="trademark-advisory-disclaimer"
+      >
+        {content.disclaimer || DEFAULT_TRADEMARK_DISCLAIMER}
+      </div>
+      {content.selectedName && (
+        <div className="font-mono text-[12px] font-bold text-zinc-200" data-testid="trademark-selected-name">
+          {content.selectedName}
+        </div>
+      )}
+      {Array.isArray(content.signals) && content.signals.map((signal, i) => (
+        <div
+          key={i}
+          className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2"
+          data-testid={`trademark-signal-${i}`}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="font-mono text-[11px] font-semibold text-zinc-200">{signal.mark}</div>
+              {signal.class && (
+                <div className="font-mono text-[9px] text-zinc-500">Class {signal.class}</div>
+              )}
+              {signal.owner && (
+                <div className="font-mono text-[9px] text-zinc-500">{signal.owner}</div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {signal.registrationNumber && (
+                <span className="font-mono text-[9px] text-zinc-500">#{signal.registrationNumber}</span>
+              )}
+              <Badge
+                variant="outline"
+                className={`font-mono text-[9px] font-bold uppercase tracking-[0.08em] ${TRADEMARK_STATUS_CLASSES[signal.status] ?? TRADEMARK_STATUS_CLASSES.dead}`}
+                data-testid={`trademark-signal-${i}-status`}
+              >
+                {signal.status}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // --- GenericRenderer (fallback) ---
 
 export function GenericRenderer({ content, type }) {
@@ -273,20 +460,23 @@ const TYPE_RENDERERS = {
   viability_analysis: ViabilityRenderer,
   business_plan: BusinessPlanRenderer,
   tech_research: TechResearchRenderer,
+  naming_candidates: NamingCandidatesRenderer,
+  domain_signals: DomainSignalsRenderer,
+  trademark_signals: TrademarkSignalsRenderer,
 };
 
 /**
  * Dispatches to the correct sub-renderer based on artifact.type.
  *
- * @param {{ artifact: { type: string, content: any } }} props
+ * @param {{ artifact: { type: string, content: any }, onAction?: Function }} props
  */
-export default function ArtifactRenderer({ artifact }) {
+export default function ArtifactRenderer({ artifact, onAction }) {
   if (!artifact) return null;
 
   const Renderer = TYPE_RENDERERS[artifact.type];
 
   if (Renderer) {
-    return <Renderer content={artifact.content} />;
+    return <Renderer content={artifact.content} onAction={onAction} />;
   }
 
   return <GenericRenderer content={artifact.content} type={artifact.type} />;

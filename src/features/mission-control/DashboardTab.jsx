@@ -517,7 +517,7 @@ function DossierCurrentApprovalCard({ section }) {
   );
 }
 
-function ArtifactDetailPanel({ artifactId, testId }) {
+function ArtifactDetailPanel({ artifactId, testId, onAction }) {
   const { artifact, loading, error } = useArtifact(artifactId);
 
   if (loading) {
@@ -548,14 +548,24 @@ function ArtifactDetailPanel({ artifactId, testId }) {
 
   return (
     <div data-testid={testId}>
-      <ArtifactRenderer artifact={artifact} />
+      <ArtifactRenderer artifact={artifact} onAction={onAction} />
     </div>
   );
 }
 
-function DossierStageOutputCard({ section }) {
+function DossierStageOutputCard({ section, projectId }) {
+  const { triggerPipeline } = useLumonActions();
   const baseTestId = `selected-project-dossier-stage-${section.stageKey}`;
   const hasMultipleArtifacts = section.artifactIds?.length > 1;
+
+  const onAction = (action) => {
+    if (action?.type === "select-name" && action.selectedName && projectId) {
+      triggerPipeline(projectId, "plan", {
+        subStage: "domain_signals",
+        context: { selectedName: action.selectedName },
+      });
+    }
+  };
 
   return (
     <Card className="bg-zinc-900/60 border-zinc-800" data-testid={baseTestId}>
@@ -601,6 +611,7 @@ function DossierStageOutputCard({ section }) {
           <ArtifactDetailPanel
             artifactId={section.artifactId}
             testId={`${baseTestId}-artifact`}
+            onAction={onAction}
           />
         )}
 
@@ -610,6 +621,7 @@ function DossierStageOutputCard({ section }) {
             key={id}
             artifactId={id}
             testId={`${baseTestId}-artifact-${index}`}
+            onAction={onAction}
           />
         ))}
 
@@ -635,7 +647,7 @@ function DossierPanel({ project }) {
           </div>
           <div className="grid gap-3 xl:grid-cols-2">
             {project.dossier.stageOutputs.map((section) => (
-              <DossierStageOutputCard key={section.id} section={section} />
+              <DossierStageOutputCard key={section.id} section={section} projectId={project.id} />
             ))}
           </div>
         </div>

@@ -94,6 +94,13 @@ The domain and trademark renderers are passive display with mandatory advisory d
 - `npx vite build` — production build succeeds
 - New tests verify: naming candidate rendering + selection callback, domain signal badges + disclaimer, trademark signal status + disclaimer, ArtifactRenderer dispatch for all three new types
 
+## Observability Impact
+
+- **Console log:** `triggerPipeline` calls produce `[sync] SSE connected` and network activity visible in browser devtools Network tab as POST `/api/pipeline/trigger` with `subStage` and `context` fields in the request body when naming selection fires.
+- **DOM inspection:** Advisory disclaimers are testable via `data-testid="domain-advisory-disclaimer"` and `data-testid="trademark-advisory-disclaimer"`. Naming selection buttons carry `data-testid="naming-candidate-{index}"`.
+- **Failure shapes:** If `onAction` is not provided to `NamingCandidatesRenderer`, Select buttons render as `disabled`. If `triggerPipeline` fails (network error), the error surfaces through the existing `{ error, reason }` return shape — no new error paths added.
+- **Runtime signals:** Naming selection triggers `triggerPipeline(projectId, "plan", { subStage: "domain_signals", context: { selectedName } })` which is visible in server logs as `[bridge] sequential-next subStage=domain_signals`.
+
 ## Inputs
 
 - `src/features/mission-control/ArtifactRenderer.jsx` — current renderer with `TYPE_RENDERERS` dispatch table, `CollapsibleSection`, `ScoreBadge`, `Badge` already imported
