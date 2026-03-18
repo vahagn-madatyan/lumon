@@ -80,7 +80,6 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
 
 # Gatsby files
 .cache/
@@ -154,7 +153,7 @@ Thumbs.db
 .vscode/
 *.code-workspace
 .next/
-dist/
+dist*/
 build/
 __pycache__/
 *.pyc
@@ -172,3 +171,6 @@ tmp/
 .gsd/DISCUSSION-MANIFEST.json
 .gsd/milestones/**/*-CONTINUE.md
 .gsd/milestones/**/continue.md
+
+# ── GSD baseline (auto-generated) ──
+.gsd/parallel/

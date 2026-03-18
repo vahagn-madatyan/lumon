@@ -8,6 +8,9 @@ import ArtifactRenderer, {
   NamingCandidatesRenderer,
   DomainSignalsRenderer,
   TrademarkSignalsRenderer,
+  ArchitectureRenderer,
+  SpecificationRenderer,
+  PrototypeRenderer,
 } from "@/features/mission-control/ArtifactRenderer";
 
 // --- ArtifactRenderer dispatcher ---
@@ -419,5 +422,190 @@ describe("ArtifactRenderer — new type dispatch", () => {
     render(<ArtifactRenderer artifact={artifact} onAction={onAction} />);
     fireEvent.click(screen.getByTestId("naming-candidate-0-select"));
     expect(onAction).toHaveBeenCalledWith({ type: "select-name", selectedName: "TestName" });
+  });
+});
+
+// --- ArchitectureRenderer ---
+
+describe("ArchitectureRenderer", () => {
+  const content = {
+    systemOverview: "Microservices architecture with event-driven communication",
+    components: [
+      { name: "API Gateway", responsibility: "Route and authenticate requests", technology: "Express" },
+      { name: "Worker Service", responsibility: "Process background jobs", technology: "BullMQ" },
+    ],
+    dataFlow: "Client → API Gateway → Message Queue → Worker → Database",
+    deploymentModel: "Docker containers on Railway with PostgreSQL managed instance",
+    recommendation: "Start with monolith, extract services as scale demands",
+  };
+
+  it("renders system overview and components sections", () => {
+    render(<ArchitectureRenderer content={content} />);
+    expect(screen.getByTestId("architecture-renderer")).toBeInTheDocument();
+    expect(screen.getByTestId("architecture-system-overview")).toBeInTheDocument();
+    expect(screen.getByTestId("architecture-components")).toBeInTheDocument();
+    expect(screen.getByTestId("architecture-data-flow")).toBeInTheDocument();
+    expect(screen.getByTestId("architecture-deployment-model")).toBeInTheDocument();
+  });
+
+  it("renders component cards with name, responsibility, technology", () => {
+    render(<ArchitectureRenderer content={content} />);
+    expect(screen.getByTestId("architecture-component-0")).toBeInTheDocument();
+    expect(screen.getByTestId("architecture-component-1")).toBeInTheDocument();
+    expect(screen.getByText("API Gateway")).toBeInTheDocument();
+    expect(screen.getByText("Route and authenticate requests")).toBeInTheDocument();
+    expect(screen.getByTestId("architecture-component-0-tech").textContent).toBe("Express");
+    expect(screen.getByTestId("architecture-component-1-tech").textContent).toBe("BullMQ");
+  });
+
+  it("renders recommendation in emerald text", () => {
+    render(<ArchitectureRenderer content={content} />);
+    expect(screen.getByTestId("architecture-recommendation")).toBeInTheDocument();
+    const recText = screen.getByText("Start with monolith, extract services as scale demands");
+    expect(recText.className).toContain("text-emerald-300");
+  });
+});
+
+// --- SpecificationRenderer ---
+
+describe("SpecificationRenderer", () => {
+  const content = {
+    functionalRequirements: [
+      { id: "FR-001", title: "User Authentication", description: "OAuth2 login with Google and GitHub", priority: "high" },
+      { id: "FR-002", title: "Dashboard View", description: "Real-time metrics display", priority: "medium" },
+      { id: "FR-003", title: "Export CSV", description: "Download data as CSV file", priority: "low" },
+    ],
+    nonFunctionalRequirements: [
+      { category: "Performance", requirement: "API response under 200ms p95", metric: "<200ms" },
+    ],
+    apiContracts: [
+      { endpoint: "/api/users", method: "GET", description: "List all users" },
+      { endpoint: "/api/users", method: "POST", description: "Create a new user" },
+      { endpoint: "/api/users/:id", method: "PUT", description: "Update user" },
+      { endpoint: "/api/users/:id", method: "DELETE", description: "Delete user" },
+    ],
+    recommendation: "Prioritize authentication and dashboard for MVP",
+  };
+
+  it("renders functional requirements with id and priority", () => {
+    render(<SpecificationRenderer content={content} />);
+    expect(screen.getByTestId("specification-renderer")).toBeInTheDocument();
+    expect(screen.getByTestId("specification-functional-req-0-id").textContent).toBe("FR-001");
+    expect(screen.getByTestId("specification-functional-req-1-id").textContent).toBe("FR-002");
+
+    const highBadge = screen.getByTestId("specification-functional-req-0-priority");
+    expect(highBadge.textContent).toBe("high");
+    expect(highBadge.className).toContain("text-red-300");
+
+    const medBadge = screen.getByTestId("specification-functional-req-1-priority");
+    expect(medBadge.textContent).toBe("medium");
+    expect(medBadge.className).toContain("text-amber-300");
+
+    const lowBadge = screen.getByTestId("specification-functional-req-2-priority");
+    expect(lowBadge.textContent).toBe("low");
+    expect(lowBadge.className).toContain("text-zinc-400");
+  });
+
+  it("renders API contracts with method badges", () => {
+    render(<SpecificationRenderer content={content} />);
+    expect(screen.getByTestId("specification-api-contracts")).toBeInTheDocument();
+
+    const getBadge = screen.getByTestId("specification-api-contract-0-method");
+    expect(getBadge.textContent).toBe("GET");
+    expect(getBadge.className).toContain("text-emerald-300");
+
+    const postBadge = screen.getByTestId("specification-api-contract-1-method");
+    expect(postBadge.textContent).toBe("POST");
+    expect(postBadge.className).toContain("text-blue-300");
+
+    const putBadge = screen.getByTestId("specification-api-contract-2-method");
+    expect(putBadge.textContent).toBe("PUT");
+    expect(putBadge.className).toContain("text-amber-300");
+
+    const deleteBadge = screen.getByTestId("specification-api-contract-3-method");
+    expect(deleteBadge.textContent).toBe("DELETE");
+    expect(deleteBadge.className).toContain("text-red-300");
+  });
+
+  it("renders recommendation", () => {
+    render(<SpecificationRenderer content={content} />);
+    expect(screen.getByTestId("specification-recommendation")).toBeInTheDocument();
+    const recText = screen.getByText("Prioritize authentication and dashboard for MVP");
+    expect(recText.className).toContain("text-emerald-300");
+  });
+});
+
+// --- PrototypeRenderer ---
+
+describe("PrototypeRenderer", () => {
+  const content = {
+    projectStructure: "src/\n  index.ts\n  routes/\n    users.ts\n  models/\n    user.ts",
+    entryPoints: [
+      { file: "src/index.ts", purpose: "Application bootstrap and server start" },
+    ],
+    dependencies: [
+      { name: "express", version: "^4.18.0", purpose: "HTTP server framework" },
+      { name: "prisma", version: "^5.0.0", purpose: "Database ORM" },
+    ],
+    setupInstructions: "npm install\nnpx prisma generate\nnpm run dev",
+    recommendation: "Use TypeScript strict mode from day one",
+  };
+
+  it("renders project structure as preformatted text", () => {
+    render(<PrototypeRenderer content={content} />);
+    expect(screen.getByTestId("prototype-renderer")).toBeInTheDocument();
+    expect(screen.getByTestId("prototype-project-structure")).toBeInTheDocument();
+    const pre = screen.getByTestId("prototype-project-structure").querySelector("pre");
+    expect(pre).toBeInTheDocument();
+    expect(pre.textContent).toContain("src/");
+    expect(pre.textContent).toContain("index.ts");
+  });
+
+  it("renders dependencies with name and version", () => {
+    render(<PrototypeRenderer content={content} />);
+    expect(screen.getByTestId("prototype-dependencies")).toBeInTheDocument();
+    expect(screen.getByTestId("prototype-dependency-0")).toBeInTheDocument();
+    expect(screen.getByText("express")).toBeInTheDocument();
+    expect(screen.getByTestId("prototype-dependency-0-version").textContent).toBe("^4.18.0");
+    expect(screen.getByText("prisma")).toBeInTheDocument();
+    expect(screen.getByTestId("prototype-dependency-1-version").textContent).toBe("^5.0.0");
+  });
+
+  it("renders recommendation", () => {
+    render(<PrototypeRenderer content={content} />);
+    expect(screen.getByTestId("prototype-recommendation")).toBeInTheDocument();
+    const recText = screen.getByText("Use TypeScript strict mode from day one");
+    expect(recText.className).toContain("text-emerald-300");
+  });
+});
+
+// --- ArtifactRenderer dispatch for verification types ---
+
+describe("ArtifactRenderer — verification type dispatch", () => {
+  it("dispatches architecture_outline to ArchitectureRenderer", () => {
+    const artifact = {
+      type: "architecture_outline",
+      content: { systemOverview: "Monolith with REST API" },
+    };
+    render(<ArtifactRenderer artifact={artifact} />);
+    expect(screen.getByTestId("architecture-renderer")).toBeInTheDocument();
+  });
+
+  it("dispatches specification to SpecificationRenderer", () => {
+    const artifact = {
+      type: "specification",
+      content: { functionalRequirements: [{ id: "FR-001", title: "Auth", priority: "high" }] },
+    };
+    render(<ArtifactRenderer artifact={artifact} />);
+    expect(screen.getByTestId("specification-renderer")).toBeInTheDocument();
+  });
+
+  it("dispatches prototype_scaffold to PrototypeRenderer", () => {
+    const artifact = {
+      type: "prototype_scaffold",
+      content: { projectStructure: "src/\n  main.ts" },
+    };
+    render(<ArtifactRenderer artifact={artifact} />);
+    expect(screen.getByTestId("prototype-renderer")).toBeInTheDocument();
   });
 });

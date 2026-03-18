@@ -871,15 +871,17 @@ function ConnectionStatusIndicator() {
 
 function PipelineActions({ project }) {
   const { triggerPipeline, approvePipeline } = useLumonActions();
+  const { connected } = useServerSyncStatus();
   const [loading, setLoading] = useState(null); // "trigger" | "approve" | "reject" | null
 
   if (!project) return null;
 
   const currentStage = project.currentStage;
-  const canTrigger =
-    currentStage?.stageKey === "intake" && currentStage?.status === "queued";
+  const canTrigger = currentStage?.status === "queued";
   const canApprove =
     currentStage?.approval?.state === "pending" && currentStage?.approval?.required;
+
+  const isDisabled = loading !== null || !connected;
 
   const handleTrigger = async () => {
     setLoading("trigger");
@@ -912,12 +914,21 @@ function PipelineActions({ project }) {
 
   return (
     <div className="flex items-center gap-2" data-testid="pipeline-actions">
+      {!connected && (
+        <div
+          className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-800/50 px-2 py-1 font-mono text-[9px] text-zinc-400"
+          data-testid="pipeline-actions-offline"
+        >
+          <WifiOff size={10} />
+          <span>Server offline — triggers disabled</span>
+        </div>
+      )}
       {canTrigger && (
         <Button
           type="button"
           size="sm"
           onClick={handleTrigger}
-          disabled={loading !== null}
+          disabled={isDisabled}
           data-testid="trigger-discovery-btn"
           className="font-mono text-[10px] font-semibold bg-emerald-500 text-zinc-950 hover:bg-emerald-400 disabled:opacity-50"
         >
@@ -935,7 +946,7 @@ function PipelineActions({ project }) {
             type="button"
             size="sm"
             onClick={handleApprove}
-            disabled={loading !== null}
+            disabled={isDisabled}
             data-testid="approve-btn"
             className="font-mono text-[10px] font-semibold bg-green-500 text-zinc-950 hover:bg-green-400 disabled:opacity-50"
           >
@@ -951,7 +962,7 @@ function PipelineActions({ project }) {
             size="sm"
             variant="outline"
             onClick={handleReject}
-            disabled={loading !== null}
+            disabled={isDisabled}
             data-testid="reject-btn"
             className="font-mono text-[10px] font-semibold border-red-500/30 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
           >
@@ -967,6 +978,8 @@ function PipelineActions({ project }) {
     </div>
   );
 }
+
+export { PipelineActions };
 
 export default function DashboardTab({ onOpenNewProject }) {
   const dashboardCards = useLumonSelector(selectDashboardCards);

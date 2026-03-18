@@ -437,6 +437,290 @@ export function TrademarkSignalsRenderer({ content }) {
   );
 }
 
+// --- ArchitectureRenderer ---
+
+const TECH_BADGE_CLASS = "bg-cyan-500/15 text-cyan-300 border-cyan-500/30";
+
+export function ArchitectureRenderer({ content }) {
+  if (!content) return null;
+
+  return (
+    <div className="space-y-2" data-testid="architecture-renderer">
+      {content.systemOverview && (
+        <CollapsibleSection title="System Overview" defaultOpen testId="architecture-system-overview">
+          <div className="font-mono text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap">
+            {typeof content.systemOverview === "string"
+              ? content.systemOverview
+              : JSON.stringify(content.systemOverview, null, 2)}
+          </div>
+        </CollapsibleSection>
+      )}
+      {Array.isArray(content.components) && content.components.length > 0 && (
+        <CollapsibleSection title="Components" defaultOpen testId="architecture-components">
+          <div className="space-y-2">
+            {content.components.map((comp, i) => (
+              <div
+                key={i}
+                className="rounded border border-zinc-800 bg-zinc-950/70 px-2.5 py-2"
+                data-testid={`architecture-component-${i}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[10px] font-bold text-zinc-200">
+                    {comp.name}
+                  </span>
+                  {comp.technology && (
+                    <Badge
+                      variant="outline"
+                      className={`font-mono text-[8px] uppercase tracking-[0.08em] ${TECH_BADGE_CLASS}`}
+                      data-testid={`architecture-component-${i}-tech`}
+                    >
+                      {comp.technology}
+                    </Badge>
+                  )}
+                </div>
+                {comp.responsibility && (
+                  <div className="mt-1 font-mono text-[10px] text-zinc-400 leading-relaxed">
+                    {comp.responsibility}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {content.dataFlow && (
+        <CollapsibleSection title="Data Flow" defaultOpen testId="architecture-data-flow">
+          <div className="font-mono text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap">
+            {typeof content.dataFlow === "string"
+              ? content.dataFlow
+              : JSON.stringify(content.dataFlow, null, 2)}
+          </div>
+        </CollapsibleSection>
+      )}
+      {content.deploymentModel && (
+        <CollapsibleSection title="Deployment Model" defaultOpen testId="architecture-deployment-model">
+          <div className="font-mono text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap">
+            {typeof content.deploymentModel === "string"
+              ? content.deploymentModel
+              : JSON.stringify(content.deploymentModel, null, 2)}
+          </div>
+        </CollapsibleSection>
+      )}
+      {content.recommendation && (
+        <CollapsibleSection title="Recommendation" defaultOpen testId="architecture-recommendation">
+          <div className="font-mono text-[11px] text-emerald-300 leading-relaxed whitespace-pre-wrap">
+            {typeof content.recommendation === "string"
+              ? content.recommendation
+              : JSON.stringify(content.recommendation, null, 2)}
+          </div>
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
+// --- SpecificationRenderer ---
+
+const PRIORITY_CLASSES = {
+  high: "bg-red-500/15 text-red-300 border-red-500/30",
+  medium: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  low: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+};
+
+const METHOD_CLASSES = {
+  GET: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  POST: "bg-blue-500/15 text-blue-300 border-blue-500/30",
+  PUT: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  DELETE: "bg-red-500/15 text-red-300 border-red-500/30",
+};
+
+export function SpecificationRenderer({ content }) {
+  if (!content) return null;
+
+  return (
+    <div className="space-y-2" data-testid="specification-renderer">
+      {Array.isArray(content.functionalRequirements) && content.functionalRequirements.length > 0 && (
+        <CollapsibleSection title="Functional Requirements" defaultOpen testId="specification-functional-requirements">
+          <div className="space-y-2">
+            {content.functionalRequirements.map((req, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 rounded border border-zinc-800 bg-zinc-950/70 px-2.5 py-2"
+                data-testid={`specification-functional-req-${i}`}
+              >
+                <Badge
+                  variant="outline"
+                  className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] bg-zinc-800 text-zinc-300 border-zinc-700 shrink-0"
+                  data-testid={`specification-functional-req-${i}-id`}
+                >
+                  {req.id}
+                </Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] font-semibold text-zinc-200">{req.title}</span>
+                    {req.priority && (
+                      <Badge
+                        variant="outline"
+                        className={`font-mono text-[8px] uppercase tracking-[0.08em] ${PRIORITY_CLASSES[req.priority] ?? PRIORITY_CLASSES.low}`}
+                        data-testid={`specification-functional-req-${i}-priority`}
+                      >
+                        {req.priority}
+                      </Badge>
+                    )}
+                  </div>
+                  {req.description && (
+                    <div className="mt-1 font-mono text-[10px] text-zinc-400 leading-relaxed">
+                      {req.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {Array.isArray(content.nonFunctionalRequirements) && content.nonFunctionalRequirements.length > 0 && (
+        <CollapsibleSection title="Non-Functional Requirements" defaultOpen testId="specification-non-functional-requirements">
+          <div className="space-y-2">
+            {content.nonFunctionalRequirements.map((nfr, i) => (
+              <div
+                key={i}
+                className="rounded border border-zinc-800 bg-zinc-950/70 px-2.5 py-2"
+                data-testid={`specification-nfr-${i}`}
+              >
+                <div className="font-mono text-[10px] font-semibold text-zinc-200">{nfr.category}</div>
+                <div className="mt-1 font-mono text-[10px] text-zinc-400">{nfr.requirement}</div>
+                {nfr.metric && (
+                  <div className="mt-1 font-mono text-[9px] text-zinc-500">Metric: {nfr.metric}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {Array.isArray(content.apiContracts) && content.apiContracts.length > 0 && (
+        <CollapsibleSection title="API Contracts" defaultOpen testId="specification-api-contracts">
+          <div className="space-y-2">
+            {content.apiContracts.map((api, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-2 rounded border border-zinc-800 bg-zinc-950/70 px-2.5 py-2"
+                data-testid={`specification-api-contract-${i}`}
+              >
+                <Badge
+                  variant="outline"
+                  className={`font-mono text-[8px] font-bold uppercase tracking-[0.08em] shrink-0 ${METHOD_CLASSES[api.method] ?? METHOD_CLASSES.GET}`}
+                  data-testid={`specification-api-contract-${i}-method`}
+                >
+                  {api.method}
+                </Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="font-mono text-[10px] font-semibold text-zinc-200">{api.endpoint}</div>
+                  {api.description && (
+                    <div className="mt-1 font-mono text-[10px] text-zinc-400 leading-relaxed">
+                      {api.description}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {content.recommendation && (
+        <CollapsibleSection title="Recommendation" defaultOpen testId="specification-recommendation">
+          <div className="font-mono text-[11px] text-emerald-300 leading-relaxed whitespace-pre-wrap">
+            {typeof content.recommendation === "string"
+              ? content.recommendation
+              : JSON.stringify(content.recommendation, null, 2)}
+          </div>
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
+// --- PrototypeRenderer ---
+
+export function PrototypeRenderer({ content }) {
+  if (!content) return null;
+
+  return (
+    <div className="space-y-2" data-testid="prototype-renderer">
+      {content.projectStructure && (
+        <CollapsibleSection title="Project Structure" defaultOpen testId="prototype-project-structure">
+          <pre className="font-mono text-[10px] text-zinc-300 leading-relaxed whitespace-pre overflow-x-auto">
+            {content.projectStructure}
+          </pre>
+        </CollapsibleSection>
+      )}
+      {Array.isArray(content.entryPoints) && content.entryPoints.length > 0 && (
+        <CollapsibleSection title="Entry Points" defaultOpen testId="prototype-entry-points">
+          <div className="space-y-2">
+            {content.entryPoints.map((ep, i) => (
+              <div
+                key={i}
+                className="rounded border border-zinc-800 bg-zinc-950/70 px-2.5 py-2"
+                data-testid={`prototype-entry-point-${i}`}
+              >
+                <div className="font-mono text-[10px] font-bold text-zinc-200">{ep.file}</div>
+                {ep.purpose && (
+                  <div className="mt-1 font-mono text-[10px] text-zinc-400">{ep.purpose}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {Array.isArray(content.dependencies) && content.dependencies.length > 0 && (
+        <CollapsibleSection title="Dependencies" defaultOpen testId="prototype-dependencies">
+          <div className="space-y-2">
+            {content.dependencies.map((dep, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-2 rounded border border-zinc-800 bg-zinc-950/70 px-2.5 py-2"
+                data-testid={`prototype-dependency-${i}`}
+              >
+                <div>
+                  <span className="font-mono text-[10px] font-bold text-zinc-200">{dep.name}</span>
+                  {dep.purpose && (
+                    <span className="ml-2 font-mono text-[10px] text-zinc-400">— {dep.purpose}</span>
+                  )}
+                </div>
+                {dep.version && (
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-[8px] tracking-[0.08em] bg-zinc-800 text-zinc-300 border-zinc-700 shrink-0"
+                    data-testid={`prototype-dependency-${i}-version`}
+                  >
+                    {dep.version}
+                  </Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        </CollapsibleSection>
+      )}
+      {content.setupInstructions && (
+        <CollapsibleSection title="Setup Instructions" defaultOpen testId="prototype-setup-instructions">
+          <pre className="font-mono text-[10px] text-zinc-300 leading-relaxed whitespace-pre overflow-x-auto">
+            {content.setupInstructions}
+          </pre>
+        </CollapsibleSection>
+      )}
+      {content.recommendation && (
+        <CollapsibleSection title="Recommendation" defaultOpen testId="prototype-recommendation">
+          <div className="font-mono text-[11px] text-emerald-300 leading-relaxed whitespace-pre-wrap">
+            {typeof content.recommendation === "string"
+              ? content.recommendation
+              : JSON.stringify(content.recommendation, null, 2)}
+          </div>
+        </CollapsibleSection>
+      )}
+    </div>
+  );
+}
+
 // --- GenericRenderer (fallback) ---
 
 export function GenericRenderer({ content, type }) {
@@ -463,6 +747,9 @@ const TYPE_RENDERERS = {
   naming_candidates: NamingCandidatesRenderer,
   domain_signals: DomainSignalsRenderer,
   trademark_signals: TrademarkSignalsRenderer,
+  architecture_outline: ArchitectureRenderer,
+  specification: SpecificationRenderer,
+  prototype_scaffold: PrototypeRenderer,
 };
 
 /**

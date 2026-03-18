@@ -102,6 +102,14 @@ Three new artifact types (architecture_outline, specification, prototype_scaffol
 - `npx vitest run` — zero regressions
 - `npx vite build` — production build succeeds
 
+## Observability Impact
+
+- **New UI signals:** `data-testid="pipeline-actions-offline"` banner visible in dashboard when server is disconnected — confirms offline guard is active
+- **Generalized trigger:** PipelineActions trigger button now fires for any queued stage, not just intake — observable via `[bridge] trigger stageKey=<any>` server logs and `data-testid="trigger-discovery-btn"` remaining clickable for non-intake stages
+- **Renderer dispatch:** Three new TYPE_RENDERERS entries (`architecture_outline`, `specification`, `prototype_scaffold`) — observable via `data-testid="architecture-renderer"`, `data-testid="specification-renderer"`, `data-testid="prototype-renderer"` when artifacts of those types load in the dossier
+- **Failure state:** When disconnected, all pipeline action buttons show `disabled` attribute — inspectable via browser devtools or `data-testid="trigger-discovery-btn"` disabled state
+- **Cached dossier:** Dossier content continues rendering from `useArtifact` cache when server is offline — no loading/error states appear for previously fetched artifacts
+
 ## Inputs
 
 - `src/features/mission-control/ArtifactRenderer.jsx` — existing renderer file with TYPE_RENDERERS lookup, CollapsibleSection, and 6 existing renderers (add 3 more)

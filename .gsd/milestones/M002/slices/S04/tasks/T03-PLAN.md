@@ -103,6 +103,12 @@ These are pure test files — no production code changes. They exercise the serv
 - T01 summary — verification orchestration is wired and tested at the unit level
 - T02 summary — client-side rendering is done (not needed for these server tests, but confirms the artifact types are consistent)
 
+## Observability Impact
+
+- **Test-only task** — no runtime production signals change.
+- **How a future agent inspects this task:** Run `npx vitest run server/__tests__/rejection-iteration.test.js` and `npx vitest run server/__tests__/full-pipeline.test.js` — any failure reveals a regression in the rejection/iteration lifecycle or full pipeline integration.
+- **Failure visibility:** Vitest reports per-test pass/fail with assertion details. A broken rejection flow surfaces as mismatched execution status or artifact count; a broken pipeline integration surfaces as missing auto-trigger or wrong artifact total (expected 9).
+
 ## Expected Output
 
 - `server/__tests__/rejection-iteration.test.js` — new test file with 4+ tests proving rejection/iteration resilience

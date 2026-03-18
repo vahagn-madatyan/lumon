@@ -54,14 +54,14 @@
   - Verify: `npx vitest run server/__tests__/verification-pipeline.test.js` passes all tests; `npx vitest run` passes with zero regressions
   - Done when: Verification sub-stages orchestrate sequentially, auto-trigger fires after plan approval, all contract tests pass, n8n templates parse as valid JSON
 
-- [ ] **T02: Add architecture renderers, generalize trigger button, and wire offline mode** `est:30m`
+- [x] **T02: Add architecture renderers, generalize trigger button, and wire offline mode** `est:30m`
   - Why: Architecture/spec/prototype artifacts need dedicated renderers so they display structured content in the dossier instead of raw JSON. The trigger button is currently hardcoded to intake — operators need to trigger any queued stage. Offline mode must disable triggers while preserving cached dossier browsing.
   - Files: `src/features/mission-control/ArtifactRenderer.jsx`, `src/features/mission-control/DashboardTab.jsx`, `src/lumon/__tests__/artifact-renderer.test.jsx`, `src/lumon/__tests__/offline-mode.test.jsx`
   - Do: Add ArchitectureRenderer, SpecificationRenderer, PrototypeRenderer to TYPE_RENDERERS using CollapsibleSection pattern. Generalize PipelineActions canTrigger from `stageKey === "intake"` to any stage with `status === "queued"`. Add `useServerSyncStatus().connected` guard — disable trigger/approve/reject buttons and show offline banner when disconnected. Write renderer tests and offline mode tests.
   - Verify: `npx vitest run src/lumon/__tests__/artifact-renderer.test.jsx` and `npx vitest run src/lumon/__tests__/offline-mode.test.jsx` pass; `npx vite build` succeeds
   - Done when: All 3 new artifact types render structured content, trigger works for any queued stage, buttons disabled when disconnected, offline banner visible
 
-- [ ] **T03: Prove rejection/iteration resilience and full pipeline integration** `est:30m`
+- [x] **T03: Prove rejection/iteration resilience and full pipeline integration** `est:30m`
   - Why: This is the capstone verification — proving the complete pipeline works end-to-end and that rejection/iteration doesn't corrupt state. Without this, M002 can't claim its success criteria are met.
   - Files: `server/__tests__/rejection-iteration.test.js`, `server/__tests__/full-pipeline.test.js`
   - Do: Write rejection tests: reject a stage → re-trigger → new execution replaces old → artifacts accumulate correctly → approve succeeds. Write multi-stage rejection tests: reject plan, re-trigger, approve, verify other stages unaffected. Write full pipeline test: create project state → trigger intake → callback → approve → auto-research → research sub-stages → approve plan → plan sub-stages → approve verification → verification sub-stages → verify handoff packet contains artifacts from all stages.
