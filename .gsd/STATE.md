@@ -1,14 +1,14 @@
 # GSD State
 
-**Active Milestone:** M002: Discovery & Approval Pipeline
-**Active Slice:** S04: Architecture Package & Full Pipeline Integration
+**Active Milestone:** M003: Repo Provisioning & GSD Handoff
+**Active Slice:** S01: Provisioning Service & Handoff Controls
 **Phase:** executing
-**Requirements Status:** 14 active · 6 validated · 5 deferred · 4 out of scope
+**Requirements Status:** 0 active · 8 validated · 0 deferred · 0 out of scope
 
 ## Milestone Registry
 - ✅ **M001:** Lumon Control Surface
-- 🔄 **M002:** Discovery & Approval Pipeline
-- ⬜ **M003:** M003
+- ✅ **M002:** Discovery & Approval Pipeline
+- 🔄 **M003:** Repo Provisioning & GSD Handoff
 - ⬜ **M004:** M004
 - ⬜ **M005:** M005
 - ⬜ **M006:** M006
@@ -20,4 +20,4 @@
 - None
 
 ## Next Action
-Execute T01 of slice S04 (Wire verification stage orchestration and ship n8n workflow templates).
+Execute T01 of S01: Build provisioning service with artifact formatting and GSD bootstrap.
