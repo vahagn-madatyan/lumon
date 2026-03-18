@@ -29,9 +29,14 @@ One operator can see where every project stands, understand what each agent is d
 - **Multi-artifact accumulation via `lumon/append-artifact` reducer action — SSE artifact-ready events accumulate into `artifactIds` arrays without overwriting. Selectors project artifactIds through dossier and handoff packet evidence.**
 - **Type-dispatched `ArtifactRenderer` renders structured artifact content (viability_analysis, business_plan, tech_research, naming_candidates, domain_signals, trademark_signals) with section-based sub-renderers. `useArtifact` hook fetches content from server with module-level caching.**
 - **Plan sub-stage orchestration (naming_candidates → domain_signals → trademark_signals) with context forwarding — selected name propagates through the chain. Interactive NamingCandidatesRenderer lets operator select a name, triggering domain and trademark signal sub-workflows. Domain and trademark renderers include mandatory advisory disclaimers (D026).**
-- Vitest + RTL tests cover reducer/selectors, persistence, rendered registry, pipeline visibility, dossier/handoff, floor sync, full operator loop, API contracts, artifact output migration, server sync, research pipeline orchestration, naming pipeline orchestration, and artifact rendering (13 files, 171 tests).
+- **Verification sub-stage orchestration (architecture_outline → specification → prototype_scaffold) with auto-trigger from plan approval. Three dedicated renderers (ArchitectureRenderer, SpecificationRenderer, PrototypeRenderer) display structured content with type-specific layouts. Nine n8n workflow templates shipped for the complete pipeline.**
+- **PipelineActions generalized to trigger any queued stage. Offline mode disables all pipeline actions when server is disconnected with visible offline banner; dossier renders cached artifacts.**
+- **Full 4-stage pipeline proven end-to-end: intake → research → plan → verification, producing 9 artifacts total. Rejection/iteration lifecycle proven clean with cross-stage isolation and artifact accumulation.**
+- Vitest + RTL tests cover reducer/selectors, persistence, rendered registry, pipeline visibility, dossier/handoff, floor sync, full operator loop, API contracts, artifact output migration, server sync, research pipeline orchestration, naming pipeline orchestration, verification pipeline orchestration, artifact rendering, offline mode, rejection/iteration resilience, and full pipeline integration (17 files, 223 tests).
 - The full operator loop (create → inspect → cross-surface → reload) is proven in jsdom and real browser.
-- Next: M002/S04 integrates the full pipeline with offline mode, rejection/iteration flows, and handoff packet with real artifacts.
+- **M002/S04 completed:** Verification stage orchestration (architecture_outline → specification → prototype_scaffold), three dedicated artifact renderers, generalized trigger for any queued stage, offline mode with disabled buttons and cached dossier rendering, rejection/iteration lifecycle proven clean, and full 4-stage pipeline integration proven with 9 artifacts across all stages.
+- All M002 slices (S01–S04) are complete with 223 tests passing and zero regressions. Milestone-level UAT with live n8n remains for closeout.
+- Next: M002 milestone closeout (live browser UAT), then M003 repo provisioning and GSD handoff.
 
 ## Architecture / Key Patterns
 

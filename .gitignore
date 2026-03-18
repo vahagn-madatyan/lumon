@@ -174,3 +174,6 @@ tmp/
 
 # ── GSD baseline (auto-generated) ──
 .gsd/parallel/
+
+# ── GSD baseline (auto-generated) ──
+dist/

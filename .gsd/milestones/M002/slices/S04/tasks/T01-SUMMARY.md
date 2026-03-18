@@ -61,6 +61,16 @@ Updated `n8n/README.md` with verification stage documentation including flow dia
 - ⬜ `server/__tests__/full-pipeline.test.js` — not yet created (T03)
 - ⬜ `npx vite build` — not yet verified (T02/T03)
 
+## Verification Evidence
+
+| # | Command | Exit Code | Verdict | Duration |
+|---|---------|-----------|---------|----------|
+| 1 | `npx vitest run server/__tests__/verification-pipeline.test.js` | 0 | ✅ pass | 2.5s |
+| 2 | `npx vitest run` | 0 | ✅ pass (197 tests) | 3.8s |
+| 3 | `node -e "JSON.parse(require('fs').readFileSync('n8n/workflows/verification-architecture-outline.json'))"` | 0 | ✅ valid JSON | <1s |
+| 4 | `node -e "JSON.parse(require('fs').readFileSync('n8n/workflows/verification-specification.json'))"` | 0 | ✅ valid JSON | <1s |
+| 5 | `node -e "JSON.parse(require('fs').readFileSync('n8n/workflows/verification-prototype-scaffold.json'))"` | 0 | ✅ valid JSON | <1s |
+
 ## Diagnostics
 
 - **Sequential chain:** `[bridge] sequential-next subStage=specification after=architecture_outline` and `subStage=prototype_scaffold after=specification` log lines trace verification progression

@@ -63,6 +63,15 @@ blocker_discovered: false
 - ⬜ `server/__tests__/rejection-iteration.test.js` — T03
 - ⬜ `server/__tests__/full-pipeline.test.js` — T03
 
+## Verification Evidence
+
+| # | Command | Exit Code | Verdict | Duration |
+|---|---------|-----------|---------|----------|
+| 1 | `npx vitest run src/lumon/__tests__/artifact-renderer.test.jsx` | 0 | ✅ pass (52 tests) | 2.1s |
+| 2 | `npx vitest run src/lumon/__tests__/offline-mode.test.jsx` | 0 | ✅ pass (7 tests) | 1.8s |
+| 3 | `npx vitest run` | 0 | ✅ pass (216 tests) | 4.0s |
+| 4 | `npx vite build` | 0 | ✅ production build | 3.2s |
+
 ## Diagnostics
 
 - **Offline banner**: `data-testid="pipeline-actions-offline"` visible when `useServerSyncStatus().connected` is false

@@ -13,7 +13,7 @@ This file is the explicit capability and coverage contract for the project.
 - Primary owning slice: M002 (provisional)
 - Supporting slices: M001/S03
 - Validation: mapped
-- Notes: Applies especially to transitions that affect scope, brand, or build-readiness.
+- Notes: M002/S04 proves rejection/iteration lifecycle: operator can reject a stage, iterate, re-approve without state corruption. Cross-stage isolation confirmed — rejecting one stage doesn't affect others. All 4 stages require explicit approval before pipeline advances. Full-pipeline integration test drives all stages to approved status through explicit gates.
 
 ### R005 — Lumon must produce an explicit should-we-build-this assessment before technical execution begins.
 - Class: core-capability
@@ -23,8 +23,8 @@ This file is the explicit capability and coverage contract for the project.
 - Source: user
 - Primary owning slice: M002 (provisional)
 - Supporting slices: none
-- Validation: unmapped
-- Notes: Output should be advisory and reviewable, not silent auto-scope.
+- Validation: mapped
+- Notes: M002/S01 proves viability assessment artifact produced by n8n; M002/S04 full-pipeline test confirms viability_analysis is the first artifact before downstream work begins. Advisory and reviewable — operator must approve before pipeline advances.
 
 ### R006 — The pre-build package must include business framing such as target audience, pricing posture, feature phases, and rough value model.
 - Class: core-capability
@@ -34,8 +34,8 @@ This file is the explicit capability and coverage contract for the project.
 - Source: user
 - Primary owning slice: M002 (provisional)
 - Supporting slices: none
-- Validation: unmapped
-- Notes: ARR/MRR reasoning should be transparent and clearly labeled as estimate.
+- Validation: mapped
+- Notes: M002/S02 produces business_plan artifact with target audience, pricing, and feature phases. M002/S04 full-pipeline test confirms business_plan artifact flows through to handoff packet.
 
 ### R007 — Lumon must compare and iterate on plausible technical approaches before locking the build direction.
 - Class: core-capability
@@ -45,8 +45,8 @@ This file is the explicit capability and coverage contract for the project.
 - Source: user
 - Primary owning slice: M002 (provisional)
 - Supporting slices: none
-- Validation: unmapped
-- Notes: Research should inform the user, not silently hard-bind stack choices.
+- Validation: mapped
+- Notes: M002/S02 produces tech_research artifact comparing technical approaches. M002/S04 full-pipeline test confirms tech_research artifact flows through to handoff packet alongside architecture_outline.
 
 ### R008 — Lumon must help generate, compare, and refine candidate product or business names as part of the intake pipeline.
 - Class: differentiator
@@ -69,17 +69,6 @@ This file is the explicit capability and coverage contract for the project.
 - Supporting slices: M002/S03, M005 (provisional)
 - Validation: mapped
 - Notes: M002/S03 proves domain availability and trademark signal artifacts render with status badges and mandatory advisory disclaimers (D026). Signals are clearly labeled as point-in-time advisory, not legal clearance. Full validation requires S04 live n8n proof.
-
-### R010 — Approved projects must have a tangible handoff package including architecture artifacts, specs, and a small prototype.
-- Class: core-capability
-- Status: active
-- Description: Approved projects must have a tangible handoff package including architecture artifacts, specs, and a small prototype.
-- Why it matters: GSD should receive more than an idea blurb; it needs a serious build packet.
-- Source: user
-- Primary owning slice: M002 (provisional)
-- Supporting slices: M001/S04, M003 (provisional)
-- Validation: mapped
-- Notes: M001/S04 now proves the dossier and packet structure, reload-safe detail rendering, and honest missing-state diagnostics; M002 fills it with real outputs.
 
 ### R011 — Lumon must create a project repository and place the approved artifacts where GSD can consume them.
 - Class: integration
@@ -156,7 +145,7 @@ This file is the explicit capability and coverage contract for the project.
 - Primary owning slice: M002 (provisional)
 - Supporting slices: M001/S03, M002/S03
 - Validation: mapped
-- Notes: M001 shaped stage contracts; M002/S01 proved webhook→Wait→resume loop; M002/S02 extended to research sub-workflows; M002/S03 extended to plan sub-workflows with compound webhook routing and context forwarding. Full validation requires S04 end-to-end pipeline proof.
+- Notes: M002/S04 proves full 4-stage pipeline end-to-end with n8n as the orchestration layer: 9 workflow templates, sequential sub-workflows, auto-trigger chains (intake→research, plan→verification), compound webhook routing, context forwarding, and offline degradation. Full-pipeline integration test exercises the complete contract. Milestone-level UAT with live n8n remains for closeout.
 
 ## Validated
 
@@ -192,6 +181,17 @@ This file is the explicit capability and coverage contract for the project.
 - Supporting slices: M002 (provisional)
 - Validation: validated
 - Notes: M001/S03 proves a canonical intake→handoff stage model, approval-aware progression, reload-safe persistence, and live dashboard/orchestration visibility across the real app.
+
+### R010 — Approved projects must have a tangible handoff package including architecture artifacts, specs, and a small prototype.
+- Class: core-capability
+- Status: validated
+- Description: Approved projects must have a tangible handoff package including architecture artifacts, specs, and a small prototype.
+- Why it matters: GSD should receive more than an idea blurb; it needs a serious build packet.
+- Source: user
+- Primary owning slice: M002 (provisional)
+- Supporting slices: M001/S04, M003 (provisional)
+- Validation: validated
+- Notes: M001/S04 proves dossier and packet structure; M002/S04 proves full pipeline produces 9 artifacts across 4 stages (viability_analysis, business_plan, tech_research, naming_candidates, domain_signals, trademark_signals, architecture_outline, specification, prototype_scaffold) that populate the handoff packet. Architecture, specification, and prototype renderers display structured content. Full-pipeline integration test confirms artifact counts and handoff_ready state.
 
 ### R012 — Each project must carry an explicit execution-engine choice between Claude Code and Codex.
 - Class: core-capability
@@ -337,12 +337,12 @@ This file is the explicit capability and coverage contract for the project.
 | R002 | core-capability | validated | M001/S02 | M001/S06 | validated |
 | R003 | primary-user-loop | validated | M001/S03 | M002 (provisional) | validated |
 | R004 | operability | active | M002 (provisional) | M001/S03 | mapped |
-| R005 | core-capability | active | M002 (provisional) | none | unmapped |
-| R006 | core-capability | active | M002 (provisional) | none | unmapped |
-| R007 | core-capability | active | M002 (provisional) | none | unmapped |
+| R005 | core-capability | active | M002 (provisional) | none | mapped |
+| R006 | core-capability | active | M002 (provisional) | none | mapped |
+| R007 | core-capability | active | M002 (provisional) | none | mapped |
 | R008 | differentiator | active | M002 (provisional) | M002/S03 | mapped |
 | R009 | integration | active | M002 (provisional) | M002/S03, M005 (provisional) | mapped |
-| R010 | core-capability | active | M002 (provisional) | M001/S04, M003 (provisional) | mapped |
+| R010 | core-capability | validated | M002 (provisional) | M001/S04, M003 (provisional) | validated |
 | R011 | integration | active | M003 (provisional) | none | unmapped |
 | R012 | core-capability | validated | M001/S02 | M003 (provisional) | validated |
 | R013 | integration | active | M003 (provisional) | M004 (provisional) | unmapped |
@@ -365,7 +365,7 @@ This file is the explicit capability and coverage contract for the project.
 
 ## Coverage Summary
 
-- Active requirements: 14
-- Mapped to slices: 14
-- Validated: 6 (R001, R002, R003, R012, R016, R020)
+- Active requirements: 13
+- Mapped to slices: 13
+- Validated: 7 (R001, R002, R003, R010, R012, R016, R020)
 - Unmapped active requirements: 0
