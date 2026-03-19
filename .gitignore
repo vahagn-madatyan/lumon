@@ -177,3 +177,6 @@ tmp/
 
 # ── GSD baseline (auto-generated) ──
 dist/
+
+# ── GSD baseline (auto-generated) ──
+.gsd

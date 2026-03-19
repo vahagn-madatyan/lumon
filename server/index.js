@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import pipelineRouter from "./routes/pipeline.js";
+import provisioningRouter from "./routes/provisioning.js";
 import * as artifacts from "./artifacts.js";
 
 const app = express();
@@ -11,6 +12,9 @@ app.use(express.json());
 
 // Pipeline endpoints: /api/pipeline/*
 app.use("/api/pipeline", pipelineRouter);
+
+// Provisioning endpoints: /api/provisioning/*
+app.use("/api/provisioning", provisioningRouter);
 
 // Artifact retrieval at top-level /api/artifacts/:id
 // Artifacts filtered by project + stage (must be before /:id to avoid matching "project" as an id)

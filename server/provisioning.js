@@ -573,7 +573,7 @@ export function clear() {
 /**
  * Execute the full provisioning sequence for a project.
  * @param {string} projectId
- * @param {{ name?: string, description?: string, engineChoice?: string, artifacts?: object[], ghOwner?: string }} options
+ * @param {{ name?: string, description?: string, engineChoice?: string, artifacts?: object[], ghOwner?: string, onStepUpdate?: (stepName: string, status: string, error?: string) => void }} options
  * @returns {Promise<object>} The final provisioning record
  */
 export async function provision(projectId, options = {}) {
@@ -581,6 +581,7 @@ export async function provision(projectId, options = {}) {
   const engineChoice = options.engineChoice || "claude";
   const description = options.description || "";
   const projectArtifacts = options.artifacts ?? artifacts.getByProject(projectId);
+  const onStepUpdate = options.onStepUpdate || null;
   const repoName = slugify(projectName);
   const workspacePath = path.join(WORKSPACE_ROOT, repoName);
 
@@ -593,6 +594,7 @@ export async function provision(projectId, options = {}) {
       startedAt: new Date().toISOString(),
     });
     console.log(`[provisioning] ${stepName} started for ${projectId}`);
+    if (onStepUpdate) onStepUpdate(stepName, "running");
 
     try {
       await fn();
@@ -601,6 +603,7 @@ export async function provision(projectId, options = {}) {
         completedAt: new Date().toISOString(),
       });
       console.log(`[provisioning] ${stepName} complete for ${projectId}`);
+      if (onStepUpdate) onStepUpdate(stepName, "complete");
     } catch (err) {
       updateStep(record, stepName, {
         status: "failed",
@@ -611,6 +614,7 @@ export async function provision(projectId, options = {}) {
       record.error = `Step '${stepName}' failed: ${err.message}`;
       record.completedAt = new Date().toISOString();
       console.error(`[provisioning] ${stepName} failed for ${projectId}: ${err.message}`);
+      if (onStepUpdate) onStepUpdate(stepName, "failed", err.message);
       throw err;
     }
   };
