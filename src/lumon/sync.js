@@ -80,6 +80,77 @@ export function useServerSync({ projectId, dispatch }) {
       }
     });
 
+    es.addEventListener("provisioning-progress", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "provisioning-progress", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] provisioning-progress projectId=${payload.projectId} step=${payload.data?.step}`);
+          dispatch({
+            type: "lumon/update-provisioning",
+            payload: {
+              projectId: payload.projectId,
+              changes: {
+                status: "provisioning",
+                ...(payload.data?.steps ? { steps: payload.data.steps } : {}),
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse provisioning-progress event", err);
+      }
+    });
+
+    es.addEventListener("provisioning-complete", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "provisioning-complete", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] provisioning-complete projectId=${payload.projectId}`);
+          dispatch({
+            type: "lumon/update-provisioning",
+            payload: {
+              projectId: payload.projectId,
+              changes: {
+                status: "complete",
+                repoUrl: payload.data?.repoUrl ?? null,
+                workspacePath: payload.data?.workspacePath ?? null,
+                error: null,
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse provisioning-complete event", err);
+      }
+    });
+
+    es.addEventListener("provisioning-error", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "provisioning-error", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] provisioning-error projectId=${payload.projectId} error=${payload.data?.error}`);
+          dispatch({
+            type: "lumon/update-provisioning",
+            payload: {
+              projectId: payload.projectId,
+              changes: {
+                status: "failed",
+                error: payload.data?.error ?? "Unknown provisioning error",
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse provisioning-error event", err);
+      }
+    });
+
     es.addEventListener("pipeline-status", (event) => {
       try {
         const payload = JSON.parse(event.data);

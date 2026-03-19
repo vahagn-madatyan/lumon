@@ -77,6 +77,63 @@ export function LumonProvider({ children, initialState, persistence = lumonLocal
 
         dispatch(lumonActions.updateAgent(agent.id, createStatusPatch(agent, status, changes)));
       },
+      updateProvisioning: (projectId, changes) =>
+        dispatch(lumonActions.updateProvisioning(projectId, changes)),
+      previewProvisioning: async (projectId) => {
+        dispatch(lumonActions.updateProvisioning(projectId, { status: "previewing", error: null }));
+        try {
+          const res = await fetch("/api/provisioning/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            dispatch(lumonActions.updateProvisioning(projectId, {
+              status: "failed",
+              error: data.error || `HTTP ${res.status}`,
+            }));
+            return { error: data.error || `HTTP ${res.status}` };
+          }
+          dispatch(lumonActions.updateProvisioning(projectId, {
+            status: "confirming",
+            previewPlan: data,
+          }));
+          return data;
+        } catch (err) {
+          dispatch(lumonActions.updateProvisioning(projectId, {
+            status: "failed",
+            error: err.message,
+          }));
+          return { error: err.message };
+        }
+      },
+      executeProvisioning: async (projectId, options = {}) => {
+        dispatch(lumonActions.updateProvisioning(projectId, { status: "provisioning", error: null }));
+        try {
+          const res = await fetch("/api/provisioning/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, ...options }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            dispatch(lumonActions.updateProvisioning(projectId, {
+              status: "failed",
+              error: data.error || `HTTP ${res.status}`,
+            }));
+            return { error: data.error || `HTTP ${res.status}` };
+          }
+          // Status updates arrive via SSE — don't set complete here
+          return data;
+        } catch (err) {
+          dispatch(lumonActions.updateProvisioning(projectId, {
+            status: "failed",
+            error: err.message,
+          }));
+          return { error: err.message };
+        }
+      },
       triggerPipeline: sync.triggerPipeline,
       approvePipeline: sync.approvePipeline,
     }),

@@ -659,7 +659,7 @@ const buildPacketSummary = (status, counts) => {
   return "Packet sections are ready for build handoff.";
 };
 
-const buildHandoffPacket = ({ pipeline, currentStage, stageOutputs }) => {
+const buildHandoffPacket = ({ pipeline, currentStage, stageOutputs, provisioning }) => {
   const stagesByKey = new Map(stageOutputs.map((stageSection) => [stageSection.stageKey, stageSection]));
   const architectureSections = [
     stagesByKey.get(LUMON_PREBUILD_STAGE_KEYS.research),
@@ -700,6 +700,13 @@ const buildHandoffPacket = ({ pipeline, currentStage, stageOutputs }) => {
     missingCount: counts[LUMON_DETAIL_STATES.missing],
     sectionCount: sections.length,
     sections,
+    provisioning: {
+      status: provisioning?.status ?? "idle",
+      repoUrl: provisioning?.repoUrl ?? null,
+      workspacePath: provisioning?.workspacePath ?? null,
+      error: provisioning?.error ?? null,
+      provisioningReady: pipeline.readyForHandoff && (provisioning?.status ?? "idle") === "idle",
+    },
   };
 };
 
@@ -709,6 +716,7 @@ const buildProjectDetailContract = ({ project, pipeline, currentStage, currentGa
     pipeline,
     currentStage,
     stageOutputs: dossier.stageOutputs,
+    provisioning: project.provisioning,
   });
 
   return {
@@ -900,6 +908,7 @@ const buildProjectViewModel = (project, selection, agentsById, options = {}) => 
     pipelineStatusLabel: pipeline.label,
     pipelineSummary: pipeline.summary,
     stageTimeline: stages,
+    provisioning: project.provisioning,
     ...(detailContract ?? {}),
   };
 };

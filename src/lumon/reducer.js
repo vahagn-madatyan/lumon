@@ -11,6 +11,7 @@ export const lumonActionTypes = {
   updateAgent: "lumon/update-agent",
   updateStage: "lumon/update-stage",
   appendArtifact: "lumon/append-artifact",
+  updateProvisioning: "lumon/update-provisioning",
 };
 
 export const lumonActions = {
@@ -38,6 +39,10 @@ export const lumonActions = {
   appendArtifact: (stageId, artifact) => ({
     type: lumonActionTypes.appendArtifact,
     payload: { stageId, artifact },
+  }),
+  updateProvisioning: (projectId, changes) => ({
+    type: lumonActionTypes.updateProvisioning,
+    payload: { projectId, changes },
   }),
 };
 
@@ -342,6 +347,33 @@ export function lumonReducer(state, action) {
 
         changed = true;
         return updateProjectStage(project, stageId, { output: mergedOutput }, now);
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.updateProvisioning: {
+      const projectId = action.payload?.projectId;
+      const changes = action.payload?.changes;
+      if (!projectId || !changes) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        return touchProject(
+          project,
+          {
+            provisioning: { ...project.provisioning, ...changes },
+          },
+          now,
+        );
       });
 
       return changed ? buildState(state, projects) : state;

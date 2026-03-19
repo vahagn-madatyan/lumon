@@ -763,6 +763,39 @@ export function createCanonicalPrebuildStages({
   return stages;
 }
 
+const VALID_PROVISIONING_STATUSES = new Set([
+  "idle",
+  "previewing",
+  "confirming",
+  "provisioning",
+  "complete",
+  "failed",
+]);
+
+const DEFAULT_PROVISIONING_STATE = Object.freeze({
+  status: "idle",
+  repoUrl: null,
+  workspacePath: null,
+  error: null,
+  steps: [],
+  previewPlan: null,
+});
+
+export function normalizeProvisioningState(input) {
+  if (!input || typeof input !== "object") {
+    return { ...DEFAULT_PROVISIONING_STATE };
+  }
+
+  return {
+    status: VALID_PROVISIONING_STATUSES.has(input.status) ? input.status : "idle",
+    repoUrl: typeof input.repoUrl === "string" ? input.repoUrl : null,
+    workspacePath: typeof input.workspacePath === "string" ? input.workspacePath : null,
+    error: typeof input.error === "string" ? input.error : null,
+    steps: Array.isArray(input.steps) ? [...input.steps] : [],
+    previewPlan: input.previewPlan != null && typeof input.previewPlan === "object" ? { ...input.previewPlan } : null,
+  };
+}
+
 const deriveFallbackExecutionInput = (projectInput, agents, waveTotal) => ({
   id: `engine:${projectInput.id}`,
   label: `${projectInput.name ?? projectInput.id} pipeline`,
@@ -855,6 +888,7 @@ export function createProject(input = {}, options = {}) {
     },
     agents,
     execution,
+    provisioning: normalizeProvisioningState(input.provisioning),
     meta: copyMeta(input.meta),
   };
 }
