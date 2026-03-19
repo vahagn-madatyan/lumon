@@ -726,6 +726,259 @@ function HandoffSectionCard({ section }) {
   );
 }
 
+const PROVISIONING_STEP_LABELS = {
+  "repo-create": "Create GitHub repository",
+  "clone": "Clone repository",
+  "artifact-write": "Write artifact files",
+  "gsd-init": "Initialize GSD structure",
+  "commit-push": "Commit and push",
+};
+
+const ENGINE_LABELS = {
+  claude: "Claude Code",
+  codex: "Codex CLI",
+};
+
+function ProvisioningConfirmDialog({ plan, projectId }) {
+  const { updateProvisioning, executeProvisioning } = useLumonActions();
+
+  const handleCancel = () => {
+    updateProvisioning(projectId, { status: "idle", previewPlan: null });
+  };
+
+  const handleConfirm = () => {
+    executeProvisioning(projectId, plan);
+  };
+
+  return (
+    <Card className="bg-zinc-900/80 border-zinc-600" data-testid="provisioning-confirm-dialog">
+      <CardContent className="p-3.5 space-y-3">
+        <div className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-300">
+          Provision Repository
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-2 text-[10px] font-mono">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+            <div className="uppercase tracking-[0.08em] text-zinc-600">Repo name</div>
+            <div className="mt-1 text-zinc-200 font-semibold" data-testid="provisioning-plan-repo">
+              {plan?.repoName ?? "—"}
+            </div>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+            <div className="uppercase tracking-[0.08em] text-zinc-600">Engine</div>
+            <div className="mt-1 text-zinc-200 font-semibold" data-testid="provisioning-plan-engine">
+              {ENGINE_LABELS[plan?.engineChoice] ?? plan?.engineChoice ?? "—"}
+            </div>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+            <div className="uppercase tracking-[0.08em] text-zinc-600">Workspace</div>
+            <div className="mt-1 text-zinc-200 font-semibold truncate" data-testid="provisioning-plan-workspace">
+              {plan?.workspacePath ?? "—"}
+            </div>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+            <div className="uppercase tracking-[0.08em] text-zinc-600">Files</div>
+            <div className="mt-1 text-zinc-200 font-semibold" data-testid="provisioning-plan-file-count">
+              {plan?.files?.length ?? 0} files
+            </div>
+          </div>
+        </div>
+
+        {plan?.files?.length > 0 && (
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 px-3 py-2 max-h-32 overflow-y-auto">
+            <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-zinc-600 mb-1">File list</div>
+            <div className="space-y-0.5" data-testid="provisioning-plan-files">
+              {plan.files.map((file) => (
+                <div key={file} className="font-mono text-[10px] text-zinc-400">{file}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 font-mono text-[10px] text-amber-200">
+          This will create a GitHub repository and write files to your local filesystem.
+        </div>
+
+        <div className="flex items-center gap-2 justify-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={handleCancel}
+            data-testid="provisioning-cancel-btn"
+            className="font-mono text-[10px] font-semibold border-zinc-600 text-zinc-400 hover:bg-zinc-800"
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleConfirm}
+            data-testid="provisioning-confirm-btn"
+            className="font-mono text-[10px] font-semibold bg-cyan-500 text-zinc-950 hover:bg-cyan-400"
+          >
+            Confirm & Provision
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProvisioningProgress({ provisioning }) {
+  const steps = provisioning.steps ?? [];
+  const completedCount = steps.filter((s) => s.status === "complete").length;
+  const runningStep = steps.find((s) => s.status === "running");
+  const failedStep = steps.find((s) => s.status === "failed");
+  const isComplete = provisioning.status === "complete";
+  const isFailed = provisioning.status === "failed";
+
+  const progressLabel = isComplete
+    ? "Provisioning complete"
+    : isFailed
+      ? `Failed at: ${PROVISIONING_STEP_LABELS[failedStep?.name] ?? failedStep?.name ?? "unknown"}`
+      : runningStep
+        ? `Step ${completedCount + 1} of ${steps.length}: ${PROVISIONING_STEP_LABELS[runningStep.name] ?? runningStep.name}...`
+        : `${completedCount} of ${steps.length} steps complete`;
+
+  return (
+    <Card className="bg-zinc-900/60 border-zinc-800" data-testid="provisioning-progress">
+      <CardContent className="p-3.5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-zinc-500">Provisioning</div>
+          <div
+            className={`font-mono text-[10px] font-semibold ${
+              isComplete ? "text-green-300" : isFailed ? "text-red-300" : "text-cyan-300"
+            }`}
+            data-testid="provisioning-progress-label"
+          >
+            {progressLabel}
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          {steps.map((step) => (
+            <div
+              key={step.name}
+              className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${
+                step.status === "failed"
+                  ? "border-red-500/30 bg-red-500/5"
+                  : step.status === "complete"
+                    ? "border-emerald-500/20 bg-emerald-500/5"
+                    : step.status === "running"
+                      ? "border-cyan-500/30 bg-cyan-500/5"
+                      : "border-zinc-800 bg-zinc-950/50"
+              }`}
+              data-testid={`provisioning-step-${step.name}`}
+            >
+              {step.status === "pending" && (
+                <div className="h-2 w-2 rounded-full bg-zinc-600 shrink-0" />
+              )}
+              {step.status === "running" && (
+                <Loader2 size={12} className="text-cyan-400 animate-spin shrink-0" />
+              )}
+              {step.status === "complete" && (
+                <Check size={12} className="text-emerald-400 shrink-0" />
+              )}
+              {step.status === "failed" && (
+                <X size={12} className="text-red-400 shrink-0" />
+              )}
+              <div className="font-mono text-[11px] text-zinc-200">
+                {PROVISIONING_STEP_LABELS[step.name] ?? step.name}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {isComplete && (
+          <div className="space-y-2">
+            {provisioning.repoUrl && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-zinc-500">Repository</div>
+                <a
+                  href={provisioning.repoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 block font-mono text-[11px] text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+                  data-testid="provisioning-repo-url"
+                >
+                  {provisioning.repoUrl}
+                </a>
+              </div>
+            )}
+            {provisioning.workspacePath && (
+              <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                <div className="font-mono text-[9px] uppercase tracking-[0.08em] text-zinc-500">Workspace</div>
+                <div
+                  className="mt-1 font-mono text-[11px] text-zinc-200"
+                  data-testid="provisioning-workspace-path"
+                >
+                  {provisioning.workspacePath}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isFailed && provisioning.error && (
+          <div
+            className="rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-2 font-mono text-[10px] text-red-200"
+            data-testid="provisioning-error"
+          >
+            {provisioning.error}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProvisioningSection({ project }) {
+  const { previewProvisioning } = useLumonActions();
+  const { connected } = useServerSyncStatus();
+  const provisioning = project.provisioning;
+  const provisioningReady = project.handoffPacket?.provisioning?.provisioningReady;
+
+  // Only show provisioning controls when handoff_ready
+  if (!project.handoffReady) return null;
+
+  return (
+    <div className="space-y-3" data-testid="provisioning-section">
+      {provisioning.status === "idle" && provisioningReady && (
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => previewProvisioning(project.id)}
+          disabled={!connected}
+          data-testid="provisioning-preview-btn"
+          className="font-mono text-[10px] font-semibold bg-cyan-500 text-zinc-950 hover:bg-cyan-400 disabled:opacity-50"
+        >
+          <GitBranch size={12} className="mr-1.5" />
+          Preview provisioning
+        </Button>
+      )}
+
+      {provisioning.status === "previewing" && (
+        <div
+          className="flex items-center gap-2 font-mono text-[10px] text-cyan-300"
+          data-testid="provisioning-previewing"
+        >
+          <Loader2 size={12} className="animate-spin" />
+          Loading provisioning preview…
+        </div>
+      )}
+
+      {provisioning.status === "confirming" && provisioning.previewPlan && (
+        <ProvisioningConfirmDialog plan={provisioning.previewPlan} projectId={project.id} />
+      )}
+
+      {(provisioning.status === "provisioning" || provisioning.status === "complete" || provisioning.status === "failed") && (
+        <ProvisioningProgress provisioning={provisioning} />
+      )}
+    </div>
+  );
+}
+
 function HandoffPanel({ project }) {
   const packet = project.handoffPacket;
 
@@ -774,6 +1027,8 @@ function HandoffPanel({ project }) {
             <HandoffSectionCard key={section.id} section={section} />
           ))}
         </div>
+
+        <ProvisioningSection project={project} />
       </div>
     </ScrollArea>
   );
