@@ -6,6 +6,34 @@
  * Logs the lookup result (stageKey + source), never the raw URL.
  */
 
+// ---------------------------------------------------------------------------
+// Execution config — agent CLI command templates and build settings
+// ---------------------------------------------------------------------------
+
+export const EXECUTION_CONFIG = {
+  agents: {
+    claude: {
+      command: "claude",
+      versionArgs: ["--version"],
+      execArgs: ["--output-format", "stream-json"],
+      versionPattern: /claude[- ](?:code[- ])?(?:v(?:ersion)?[ ]?)?([\d.]+)/i,
+    },
+    codex: {
+      command: "codex",
+      versionArgs: ["--version"],
+      execArgs: ["exec", "--json"],
+      versionPattern: /codex[- ](?:v(?:ersion)?[ ]?)?([\d.]+)/i,
+    },
+  },
+  defaultTimeout: 300,          // seconds
+  ringBufferSize: 1000,         // max lines retained per agent
+  validStatuses: new Set(["idle", "running", "completed", "failed"]),
+};
+
+// ---------------------------------------------------------------------------
+// Webhook config
+// ---------------------------------------------------------------------------
+
 const STAGE_ENV_MAP = {
   intake: "N8N_WEBHOOK_URL_INTAKE",
   research: "N8N_WEBHOOK_URL_RESEARCH",
