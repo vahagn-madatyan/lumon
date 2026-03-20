@@ -12,6 +12,8 @@ import {
   generateGsdBootstrap,
   execGh,
   execGit,
+  repoExists,
+  checkGhAvailability,
   _setExecFile,
   _resetExecFile,
   _setWorkspaceRoot,
@@ -690,5 +692,336 @@ describe("clear", () => {
 
     clear();
     expect(getStatus("clear-test")).toBeNull();
+  });
+});
+
+// ===================================================================
+// repoExists
+// ===================================================================
+
+describe("repoExists", () => {
+  it("returns { exists: true, url } when repo exists", async () => {
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view")) {
+        return { stdout: JSON.stringify({ url: "https://github.com/user/my-repo" }), stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await repoExists("my-repo");
+    expect(result.exists).toBe(true);
+    expect(result.url).toBe("https://github.com/user/my-repo");
+  });
+
+  it("returns { exists: false } when repo does not exist", async () => {
+    installMockExecFile(() => {
+      throw Object.assign(new Error("not found"), { stderr: "Could not resolve to a Repository" });
+    });
+
+    const result = await repoExists("nonexistent-repo");
+    expect(result.exists).toBe(false);
+    expect(result.url).toBeUndefined();
+  });
+
+  it("returns { exists: false } and logs on unexpected errors", async () => {
+    installMockExecFile(() => {
+      throw Object.assign(new Error("network error"), { stderr: "network error" });
+    });
+
+    const result = await repoExists("bad-repo");
+    expect(result.exists).toBe(false);
+  });
+});
+
+// ===================================================================
+// checkGhAvailability
+// ===================================================================
+
+describe("checkGhAvailability", () => {
+  it("returns { available: true, version } when gh is installed", async () => {
+    installMockExecFile((cmd) => {
+      if (cmd === "gh") {
+        return { stdout: "gh version 2.50.0 (2026-01-15)\nhttps://github.com/cli/cli/releases/tag/v2.50.0", stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await checkGhAvailability();
+    expect(result.available).toBe(true);
+    expect(result.version).toBe("2.50.0");
+  });
+
+  it("returns { available: false, error } when gh is not installed", async () => {
+    installMockExecFile(() => {
+      throw Object.assign(new Error("command not found: gh"), { stderr: "command not found: gh" });
+    });
+
+    const result = await checkGhAvailability();
+    expect(result.available).toBe(false);
+    expect(result.error).toContain("command not found");
+  });
+});
+
+// ===================================================================
+// Idempotent retry — provision after partial failure
+// ===================================================================
+
+describe("idempotent retry", () => {
+  it("skips repo-create when repo already exists and skips clone when workspace has .git", async () => {
+    const repoDir = path.join(TMP_WORKSPACE, "test-app");
+    // Pre-create workspace with .git to simulate prior partial success
+    fs.mkdirSync(path.join(repoDir, ".git"), { recursive: true });
+
+    const stepUpdates = [];
+    installMockExecFile((cmd, args) => {
+      // repoExists check — repo already exists
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        return { stdout: JSON.stringify({ url: "https://github.com/user/test-app" }), stderr: "" };
+      }
+      // Everything else succeeds
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await provision("retry-proj", {
+      name: "Test App",
+      artifacts: [],
+      onStepUpdate: (step, status) => stepUpdates.push({ step, status }),
+    });
+
+    expect(result.status).toBe("complete");
+
+    // repo-create should be skipped
+    const repoStep = result.steps.find((s) => s.name === "repo-create");
+    expect(repoStep.status).toBe("skipped");
+
+    // clone should be skipped (workspace .git exists)
+    const cloneStep = result.steps.find((s) => s.name === "clone");
+    expect(cloneStep.status).toBe("skipped");
+
+    // Remaining steps should complete
+    expect(result.steps.find((s) => s.name === "artifact-write").status).toBe("complete");
+    expect(result.steps.find((s) => s.name === "gsd-init").status).toBe("complete");
+    expect(result.steps.find((s) => s.name === "commit-push").status).toBe("complete");
+
+    // onStepUpdate should have been called with "skipped"
+    expect(stepUpdates.some((u) => u.step === "repo-create" && u.status === "skipped")).toBe(true);
+    expect(stepUpdates.some((u) => u.step === "clone" && u.status === "skipped")).toBe(true);
+  });
+
+  it("commit-push treats 'nothing to commit' as success", async () => {
+    const repoDir = path.join(TMP_WORKSPACE, "test-app");
+    installMockExecFile((cmd, args) => {
+      // repoExists: doesn't exist
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        throw Object.assign(new Error("not found"), { stderr: "Could not resolve to a Repository" });
+      }
+      // clone: create workspace dir
+      if (cmd === "gh" && args.includes("clone")) {
+        fs.mkdirSync(repoDir, { recursive: true });
+        return { stdout: "", stderr: "" };
+      }
+      // git commit: nothing to commit
+      if (cmd === "git" && args[0] === "commit") {
+        throw Object.assign(new Error("nothing to commit"), {
+          stderr: "nothing to commit, working tree clean",
+        });
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await provision("nothing-commit", {
+      name: "Test App",
+      artifacts: [],
+    });
+
+    expect(result.status).toBe("complete");
+    expect(result.steps.find((s) => s.name === "commit-push").status).toBe("complete");
+  });
+
+  it("allows retry after previous failure (status='failed')", async () => {
+    // First run: fail at clone
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        throw Object.assign(new Error("not found"), { stderr: "not found" });
+      }
+      if (cmd === "gh" && args.includes("clone")) {
+        throw Object.assign(new Error("clone failed"), { stderr: "clone failed" });
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const firstResult = await provision("retry-after-fail", {
+      name: "Test App",
+      artifacts: [],
+    });
+    expect(firstResult.status).toBe("failed");
+
+    // Second run: repo now exists, clone succeeds
+    const repoDir = path.join(TMP_WORKSPACE, "test-app");
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        return { stdout: JSON.stringify({ url: "https://github.com/user/test-app" }), stderr: "" };
+      }
+      if (cmd === "gh" && args.includes("clone")) {
+        fs.mkdirSync(repoDir, { recursive: true });
+        return { stdout: "", stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const secondResult = await provision("retry-after-fail", {
+      name: "Test App",
+      artifacts: [],
+    });
+    expect(secondResult.status).toBe("complete");
+    expect(secondResult.steps.find((s) => s.name === "repo-create").status).toBe("skipped");
+  });
+});
+
+// ===================================================================
+// Concurrency guard
+// ===================================================================
+
+describe("concurrency guard", () => {
+  it("rejects provision when status is 'running'", async () => {
+    // Start a provision that never finishes
+    let resolveProvision;
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        throw Object.assign(new Error("not found"), { stderr: "not found" });
+      }
+      if (cmd === "gh" && args.includes("create")) {
+        // Block forever until we manually resolve
+        return new Promise((resolve) => {
+          resolveProvision = resolve;
+        });
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    // Start first provision (don't await — it blocks)
+    const firstPromise = provision("concurrent-proj", {
+      name: "Test App",
+      artifacts: [],
+    });
+
+    // Wait a tick for the record to be created
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Second attempt should throw
+    await expect(
+      provision("concurrent-proj", { name: "Test App", artifacts: [] }),
+    ).rejects.toThrow("Provisioning already in progress for concurrent-proj");
+
+    // Clean up: resolve the stuck provision
+    if (resolveProvision) resolveProvision({ stdout: "", stderr: "" });
+    await firstPromise.catch(() => {}); // swallow any errors
+  });
+});
+
+// ===================================================================
+// Enriched provisioning record
+// ===================================================================
+
+describe("enriched provisioning record", () => {
+  it("includes repoUrl, workspacePath, and repoName on completed record", async () => {
+    const repoDir = path.join(TMP_WORKSPACE, "test-app");
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        // First call: doesn't exist, second call (after create): exists
+        if (execFileCalls.length <= 1) {
+          throw Object.assign(new Error("not found"), { stderr: "not found" });
+        }
+        return { stdout: JSON.stringify({ url: "https://github.com/user/test-app" }), stderr: "" };
+      }
+      if (cmd === "gh" && args.includes("clone")) {
+        fs.mkdirSync(repoDir, { recursive: true });
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await provision("enriched-proj", {
+      name: "Test App",
+      artifacts: [],
+    });
+
+    expect(result.repoName).toBe("test-app");
+    expect(result.workspacePath).toContain("test-app");
+    expect(result.repoUrl).toBe("https://github.com/user/test-app");
+
+    // Also verify via getStatus
+    const status = getStatus("enriched-proj");
+    expect(status.repoName).toBe("test-app");
+    expect(status.workspacePath).toContain("test-app");
+    expect(status.repoUrl).toBe("https://github.com/user/test-app");
+  });
+
+  it("includes repoUrl from skipped repo-create when repo already exists", async () => {
+    const repoDir = path.join(TMP_WORKSPACE, "test-app");
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        return { stdout: JSON.stringify({ url: "https://github.com/user/test-app" }), stderr: "" };
+      }
+      if (cmd === "gh" && args.includes("clone")) {
+        fs.mkdirSync(repoDir, { recursive: true });
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await provision("enriched-skip-proj", {
+      name: "Test App",
+      artifacts: [],
+    });
+
+    expect(result.repoUrl).toBe("https://github.com/user/test-app");
+    expect(result.steps.find((s) => s.name === "repo-create").status).toBe("skipped");
+  });
+});
+
+// ===================================================================
+// Step error messages with guidance
+// ===================================================================
+
+describe("step error guidance", () => {
+  it("includes actionable guidance in repo-create failure message", async () => {
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        throw Object.assign(new Error("not found"), { stderr: "not found" });
+      }
+      if (cmd === "gh" && args.includes("create")) {
+        throw Object.assign(new Error("already exists"), { stderr: "already exists" });
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await provision("guidance-proj", {
+      name: "Test App",
+      artifacts: [],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("repo-create");
+    expect(result.error).toContain("Delete the existing repo or choose a different name");
+  });
+
+  it("includes actionable guidance in clone failure message", async () => {
+    installMockExecFile((cmd, args) => {
+      if (cmd === "gh" && args.includes("view") && args.includes("--json")) {
+        throw Object.assign(new Error("not found"), { stderr: "not found" });
+      }
+      if (cmd === "gh" && args.includes("clone")) {
+        throw Object.assign(new Error("access denied"), { stderr: "access denied" });
+      }
+      return { stdout: "", stderr: "" };
+    });
+
+    const result = await provision("guidance-clone-proj", {
+      name: "Test App",
+      artifacts: [],
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("clone");
+    expect(result.error).toContain("Check that the repo exists and you have access");
   });
 });

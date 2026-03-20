@@ -44,6 +44,16 @@ router.post("/execute", async (req, res) => {
     });
   }
 
+  // Pre-check: gh CLI availability
+  const ghCheck = await provisioning.checkGhAvailability();
+  if (!ghCheck.available) {
+    return res.status(503).json({
+      error: "gh CLI unavailable",
+      reason: ghCheck.error,
+      action: "Install the GitHub CLI (gh) and authenticate with gh auth login",
+    });
+  }
+
   // Check if provisioning is already in progress for this project
   const existing = provisioning.getStatus(projectId);
   if (existing && existing.status === "running") {
@@ -76,8 +86,13 @@ router.post("/execute", async (req, res) => {
       },
     });
 
+    const finalRecord = provisioning.getStatus(projectId);
     emitSSE(projectId, "provisioning-complete", {
       status: "complete",
+      data: {
+        repoUrl: finalRecord?.repoUrl ?? null,
+        workspacePath: finalRecord?.workspacePath ?? null,
+      },
     });
     console.log(`[provisioning] provisioning-complete projectId=${projectId}`);
   } catch (err) {

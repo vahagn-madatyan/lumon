@@ -62,6 +62,14 @@ describe("POST /api/provisioning/preview", () => {
 });
 
 describe("POST /api/provisioning/execute", () => {
+  // Mock gh availability for all execute tests by default
+  beforeEach(() => {
+    vi.spyOn(provisioning, "checkGhAvailability").mockResolvedValue({
+      available: true,
+      version: "2.50.0",
+    });
+  });
+
   it("starts provisioning and returns 201 with running status", async () => {
     // Mock provision to resolve immediately
     const provisionSpy = vi.spyOn(provisioning, "provision").mockResolvedValue({
@@ -191,6 +199,10 @@ describe("POST /api/provisioning/execute", () => {
     // Verify completion event
     expect(emitSpy).toHaveBeenCalledWith("proj-steps", "provisioning-complete", {
       status: "complete",
+      data: {
+        repoUrl: null,
+        workspacePath: null,
+      },
     });
   });
 
@@ -271,5 +283,92 @@ describe("GET /api/provisioning/status/:projectId", () => {
     expect(res.body.error).toContain("clone");
     expect(res.body.steps[1].status).toBe("failed");
     expect(res.body.steps[2].status).toBe("pending");
+  });
+});
+
+// ===================================================================
+// New route tests: gh availability 503, enriched SSE event
+// ===================================================================
+
+describe("POST /api/provisioning/execute — gh availability", () => {
+  it("returns 503 when gh CLI is unavailable", async () => {
+    vi.spyOn(provisioning, "checkGhAvailability").mockResolvedValue({
+      available: false,
+      error: "command not found: gh",
+    });
+
+    const res = await request(app)
+      .post("/api/provisioning/execute")
+      .send({ projectId: "proj-no-gh" });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe("gh CLI unavailable");
+    expect(res.body.reason).toContain("command not found");
+    expect(res.body.action).toContain("Install the GitHub CLI");
+  });
+});
+
+describe("POST /api/provisioning/execute — enriched SSE event", () => {
+  it("provisioning-complete SSE event includes repoUrl and workspacePath", async () => {
+    vi.spyOn(provisioning, "checkGhAvailability").mockResolvedValue({
+      available: true,
+      version: "2.50.0",
+    });
+
+    vi.spyOn(provisioning, "provision").mockImplementation(async (_id, opts) => {
+      if (opts.onStepUpdate) {
+        opts.onStepUpdate("repo-create", "complete");
+      }
+      return { projectId: _id, status: "complete", steps: [] };
+    });
+
+    // Mock getStatus to return enriched record
+    vi.spyOn(provisioning, "getStatus")
+      .mockReturnValueOnce(null) // First call: 409 check (no running state)
+      .mockReturnValue({
+        projectId: "proj-enriched",
+        status: "complete",
+        repoUrl: "https://github.com/user/proj-enriched",
+        workspacePath: "/workspace/proj-enriched",
+        repoName: "proj-enriched",
+        steps: [],
+      });
+
+    const pipelineModule = await import("../routes/pipeline.js");
+    const emitSpy = vi.spyOn(pipelineModule, "emitSSE").mockImplementation(() => {});
+
+    await request(app)
+      .post("/api/provisioning/execute")
+      .send({ projectId: "proj-enriched" });
+
+    await vi.waitFor(() => {
+      expect(emitSpy).toHaveBeenCalledWith("proj-enriched", "provisioning-complete", {
+        status: "complete",
+        data: {
+          repoUrl: "https://github.com/user/proj-enriched",
+          workspacePath: "/workspace/proj-enriched",
+        },
+      });
+    });
+  });
+});
+
+describe("GET /api/provisioning/status/:projectId — enriched fields", () => {
+  it("returns enriched fields on completed record", async () => {
+    vi.spyOn(provisioning, "getStatus").mockReturnValue({
+      projectId: "proj-enriched-status",
+      status: "complete",
+      repoUrl: "https://github.com/user/my-repo",
+      workspacePath: "/workspace/my-repo",
+      repoName: "my-repo",
+      steps: [],
+    });
+
+    const res = await request(app).get("/api/provisioning/status/proj-enriched-status");
+
+    expect(res.status).toBe(200);
+    expect(res.body.repoUrl).toBe("https://github.com/user/my-repo");
+    expect(res.body.workspacePath).toBe("/workspace/my-repo");
+    expect(res.body.repoName).toBe("my-repo");
   });
 });

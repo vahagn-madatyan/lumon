@@ -3,6 +3,7 @@ import cors from "cors";
 import pipelineRouter from "./routes/pipeline.js";
 import provisioningRouter from "./routes/provisioning.js";
 import * as artifacts from "./artifacts.js";
+import { checkGhAvailability } from "./provisioning.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -38,13 +39,21 @@ app.get("/api/artifacts/:id", (req, res) => {
   res.json(artifact);
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   const webhookUrl = process.env.N8N_WEBHOOK_URL;
   console.log(`[bridge] Express server listening on port ${PORT}`);
   if (webhookUrl) {
     console.log(`[bridge] n8n webhook URL configured`);
   } else {
     console.log(`[bridge] N8N_WEBHOOK_URL not set — trigger will record intent only`);
+  }
+
+  // Check gh CLI availability at startup
+  const ghResult = await checkGhAvailability();
+  if (ghResult.available) {
+    console.log(`[bridge] gh CLI: available (version ${ghResult.version})`);
+  } else {
+    console.log(`[bridge] gh CLI: NOT AVAILABLE — provisioning will fail. Install: https://cli.github.com`);
   }
 });
 

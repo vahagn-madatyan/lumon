@@ -98,6 +98,43 @@ export async function execGit(args, options = {}) {
   }
 }
 
+/**
+ * Check if a GitHub repo already exists.
+ * @param {string} repoName
+ * @returns {Promise<{ exists: boolean, url?: string }>}
+ */
+export async function repoExists(repoName) {
+  try {
+    const result = await execGh(["repo", "view", repoName, "--json", "url"]);
+    const parsed = JSON.parse(result.stdout);
+    return { exists: true, url: parsed.url };
+  } catch (err) {
+    const msg = err.message || "";
+    if (!msg.includes("not found") && !msg.includes("Could not resolve")) {
+      console.log(`[provisioning] repo check: unexpected error for ${repoName}: ${msg}`);
+    }
+    return { exists: false };
+  }
+}
+
+/**
+ * Check if the `gh` CLI is available and authenticated.
+ * @returns {Promise<{ available: boolean, version?: string, error?: string }>}
+ */
+export async function checkGhAvailability() {
+  try {
+    const result = await execFileAsync("gh", ["--version"], {
+      maxBuffer: 1024 * 1024,
+    });
+    const versionMatch = result.stdout.match(/gh version ([\d.]+)/);
+    const version = versionMatch ? versionMatch[1] : result.stdout.trim();
+    return { available: true, version };
+  } catch (err) {
+    const message = err.stderr || err.message || "gh command not found";
+    return { available: false, error: message };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Slug / name helpers
 // ---------------------------------------------------------------------------
@@ -534,6 +571,9 @@ function createProvisioningRecord(projectId) {
     startedAt: new Date().toISOString(),
     completedAt: null,
     error: null,
+    repoUrl: null,
+    workspacePath: null,
+    repoName: null,
     steps: PROVISIONING_STEPS.map((name) => ({
       name,
       status: "pending",
@@ -543,6 +583,14 @@ function createProvisioningRecord(projectId) {
     })),
   };
 }
+
+const stepGuidance = {
+  "repo-create": "Delete the existing repo or choose a different name.",
+  "clone": "Check that the repo exists and you have access.",
+  "artifact-write": "Check disk space and file permissions in the workspace directory.",
+  "gsd-init": "Check disk space and file permissions in the workspace directory.",
+  "commit-push": "Check git remote configuration and authentication.",
+};
 
 function updateStep(record, stepName, updates) {
   const step = record.steps.find((s) => s.name === stepName);
@@ -577,6 +625,12 @@ export function clear() {
  * @returns {Promise<object>} The final provisioning record
  */
 export async function provision(projectId, options = {}) {
+  // Concurrency guard: reject if already running
+  const existing = provisioningState.get(projectId);
+  if (existing?.status === "running") {
+    throw new Error(`Provisioning already in progress for ${projectId}`);
+  }
+
   const projectName = options.name || projectId;
   const engineChoice = options.engineChoice || "claude";
   const description = options.description || "";
@@ -586,6 +640,8 @@ export async function provision(projectId, options = {}) {
   const workspacePath = path.join(WORKSPACE_ROOT, repoName);
 
   const record = createProvisioningRecord(projectId);
+  record.repoName = repoName;
+  record.workspacePath = workspacePath;
   provisioningState.set(projectId, record);
 
   const runStep = async (stepName, fn) => {
@@ -605,36 +661,66 @@ export async function provision(projectId, options = {}) {
       console.log(`[provisioning] ${stepName} complete for ${projectId}`);
       if (onStepUpdate) onStepUpdate(stepName, "complete");
     } catch (err) {
+      const guidance = stepGuidance[stepName] || "";
+      const enrichedMessage = guidance
+        ? `${err.message} ${guidance}`
+        : err.message;
       updateStep(record, stepName, {
         status: "failed",
         completedAt: new Date().toISOString(),
-        error: err.message,
+        error: enrichedMessage,
       });
       record.status = "failed";
-      record.error = `Step '${stepName}' failed: ${err.message}`;
+      record.error = `Step '${stepName}' failed: ${enrichedMessage}`;
       record.completedAt = new Date().toISOString();
-      console.error(`[provisioning] ${stepName} failed for ${projectId}: ${err.message}`);
-      if (onStepUpdate) onStepUpdate(stepName, "failed", err.message);
+      console.error(`[provisioning] ${stepName} failed for ${projectId}: ${enrichedMessage}`);
+      if (onStepUpdate) onStepUpdate(stepName, "failed", enrichedMessage);
       throw err;
     }
   };
 
+  const skipStep = (stepName, reason) => {
+    updateStep(record, stepName, {
+      status: "skipped",
+      startedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    });
+    console.log(`[provisioning] ${reason}, skipping ${stepName}`);
+    if (onStepUpdate) onStepUpdate(stepName, "skipped");
+  };
+
   try {
-    // Step 1: Create GitHub repo
-    await runStep("repo-create", async () => {
-      await execGh([
-        "repo", "create", repoName,
-        "--private",
-        "--description", description || `${projectName} — provisioned by Lumon`,
-      ]);
-    });
+    // Step 1: Create GitHub repo (idempotent — skip if exists)
+    const repoCheck = await repoExists(repoName);
+    if (repoCheck.exists) {
+      skipStep("repo-create", `repo already exists for ${projectId}`);
+      record.repoUrl = repoCheck.url;
+    } else {
+      await runStep("repo-create", async () => {
+        await execGh([
+          "repo", "create", repoName,
+          "--private",
+          "--description", description || `${projectName} — provisioned by Lumon`,
+        ]);
+      });
+      // After creation, resolve repoUrl
+      const postCreate = await repoExists(repoName);
+      if (postCreate.exists) {
+        record.repoUrl = postCreate.url;
+      }
+    }
 
-    // Step 2: Clone the repo
-    await runStep("clone", async () => {
-      await execGh(["repo", "clone", repoName, workspacePath]);
-    });
+    // Step 2: Clone the repo (idempotent — skip if .git exists)
+    const gitDir = path.join(workspacePath, ".git");
+    if (fs.existsSync(gitDir)) {
+      skipStep("clone", `workspace already cloned for ${projectId}`);
+    } else {
+      await runStep("clone", async () => {
+        await execGh(["repo", "clone", repoName, workspacePath]);
+      });
+    }
 
-    // Step 3: Write artifact files
+    // Step 3: Write artifact files (always overwrite — idempotent by nature)
     await runStep("artifact-write", async () => {
       const dossierDir = path.join(workspacePath, "docs", "dossier");
       fs.mkdirSync(dossierDir, { recursive: true });
@@ -646,7 +732,7 @@ export async function provision(projectId, options = {}) {
       }
     });
 
-    // Step 4: Write GSD bootstrap files
+    // Step 4: Write GSD bootstrap files (always overwrite — idempotent by nature)
     await runStep("gsd-init", async () => {
       const gsdFiles = generateGsdBootstrap({
         projectName,
@@ -661,14 +747,22 @@ export async function provision(projectId, options = {}) {
       }
     });
 
-    // Step 5: Commit and push
+    // Step 5: Commit and push (idempotent — treats "nothing to commit" as success)
     await runStep("commit-push", async () => {
       const gitOpts = { cwd: workspacePath };
       await execGit(["add", "."], gitOpts);
-      await execGit(
-        ["commit", "-m", `Initial provisioning from Lumon\n\nProject: ${projectName}\nEngine: ${engineChoice}`],
-        gitOpts,
-      );
+      try {
+        await execGit(
+          ["commit", "-m", `Initial provisioning from Lumon\n\nProject: ${projectName}\nEngine: ${engineChoice}`],
+          gitOpts,
+        );
+      } catch (commitErr) {
+        if (commitErr.message && commitErr.message.includes("nothing to commit")) {
+          console.log(`[provisioning] nothing to commit for ${projectId}, treating as success`);
+        } else {
+          throw commitErr;
+        }
+      }
       await execGit(["push", "-u", "origin", "main"], gitOpts);
     });
 
