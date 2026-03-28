@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useMemo, useReducer } from "react";
+import { createContext, useContext, useEffect, useMemo, useReducer, useRef } from "react";
 import { lumonActions, lumonReducer } from "./reducer";
 import { createSeedLumonState } from "./seed";
 import { lumonLocalPersistence } from "./persistence";
@@ -56,6 +56,10 @@ export function LumonProvider({ children, initialState, persistence = lumonLocal
   // Server sync — connects to bridge server SSE for the selected project
   const selectedProjectId = state?.selection?.projectId ?? null;
   const sync = useServerSync({ projectId: selectedProjectId, dispatch });
+
+  // Ref for state access inside memoized callbacks (avoids stale closure)
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const actions = useMemo(
     () => ({
@@ -136,6 +140,134 @@ export function LumonProvider({ children, initialState, persistence = lumonLocal
       },
       triggerPipeline: sync.triggerPipeline,
       approvePipeline: sync.approvePipeline,
+      startBuild: async (projectId) => {
+        // Optimistic update — set build to running immediately
+        dispatch(lumonActions.startBuild(projectId));
+        try {
+          const currentState = stateRef.current;
+          const project = currentState?.projects?.find((p) => p.id === projectId);
+          const res = await fetch("/api/execution/start", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId,
+              workspacePath: project?.provisioning?.workspacePath,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            dispatch(lumonActions.failBuild(projectId, data.error || `HTTP ${res.status}`));
+            return { error: data.error || `HTTP ${res.status}` };
+          }
+          // Real status updates arrive via SSE — 201 just confirms start
+          return data;
+        } catch (err) {
+          dispatch(lumonActions.failBuild(projectId, err.message));
+          return { error: err.message };
+        }
+      },
+      retryBuildAgent: async (projectId, agentId) => {
+        try {
+          const res = await fetch("/api/execution/retry", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, agentId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            return { error: data.error || `HTTP ${res.status}`, reason: data.reason };
+          }
+          // Real retry status arrives via SSE build-retry-started
+          return data;
+        } catch (err) {
+          return { error: "Network error", reason: err.message };
+        }
+      },
+      acknowledgeEscalation: async (projectId, decision) => {
+        try {
+          const res = await fetch("/api/execution/escalation/acknowledge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, decision }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            return { error: data.error || `HTTP ${res.status}`, reason: data.reason };
+          }
+          // Real acknowledgment status arrives via SSE build-escalation-acknowledged
+          return data;
+        } catch (err) {
+          return { error: "Network error", reason: err.message };
+        }
+      },
+      requestExternalAction: async (projectId, type, params) => {
+        try {
+          const res = await fetch("/api/external-actions/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId, type, params }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            return { error: data.error || `HTTP ${res.status}`, reason: data.reason };
+          }
+          // State updates arrive via SSE external-action-requested
+          return data;
+        } catch (err) {
+          return { error: "Network error", reason: err.message };
+        }
+      },
+      confirmExternalAction: async (projectId, actionId) => {
+        try {
+          const res = await fetch(`/api/external-actions/confirm/${encodeURIComponent(actionId)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            return { error: data.error || `HTTP ${res.status}`, reason: data.reason };
+          }
+          // State updates arrive via SSE external-action-confirmed
+          return data;
+        } catch (err) {
+          return { error: "Network error", reason: err.message };
+        }
+      },
+      cancelExternalAction: async (projectId, actionId) => {
+        try {
+          const res = await fetch(`/api/external-actions/cancel/${encodeURIComponent(actionId)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            return { error: data.error || `HTTP ${res.status}`, reason: data.reason };
+          }
+          // State updates arrive via SSE external-action-cancelled
+          return data;
+        } catch (err) {
+          return { error: "Network error", reason: err.message };
+        }
+      },
+      executeExternalAction: async (projectId, actionId) => {
+        try {
+          const res = await fetch(`/api/external-actions/execute/${encodeURIComponent(actionId)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            return { error: data.error || `HTTP ${res.status}`, reason: data.reason };
+          }
+          // State updates arrive via SSE external-action-completed/failed
+          return data;
+        } catch (err) {
+          return { error: "Network error", reason: err.message };
+        }
+      },
     }),
     [dispatch, sync.triggerPipeline, sync.approvePipeline],
   );

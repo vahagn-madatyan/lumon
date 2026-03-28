@@ -345,6 +345,14 @@ export function DomainSignalsRenderer({ content }) {
       >
         {content.disclaimer || DEFAULT_DOMAIN_DISCLAIMER}
       </div>
+      {(content.source || content.dataOrigin) && (
+        <div
+          className="font-mono text-[9px] text-zinc-500"
+          data-testid="domain-source-attribution"
+        >
+          Source: {content.dataOrigin || content.source}
+        </div>
+      )}
       {content.selectedName && (
         <div className="font-mono text-[12px] font-bold text-zinc-200" data-testid="domain-selected-name">
           {content.selectedName}
@@ -358,9 +366,30 @@ export function DomainSignalsRenderer({ content }) {
         >
           <div className="font-mono text-[11px] text-zinc-200">{signal.domain}</div>
           <div className="flex items-center gap-2">
-            {signal.price && (
-              <span className="font-mono text-[9px] text-zinc-400">{signal.price}</span>
-            )}
+            <div className="flex flex-col items-end gap-0.5">
+              <div className="flex items-center gap-1.5">
+                {signal.price && (
+                  <span className="font-mono text-[9px] text-zinc-400">{signal.price}</span>
+                )}
+                {signal.firstYearPromo && (
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                    data-testid={`domain-signal-${i}-promo`}
+                  >
+                    PROMO
+                  </Badge>
+                )}
+              </div>
+              {signal.renewalPrice && (
+                <span
+                  className="font-mono text-[8px] text-zinc-500"
+                  data-testid={`domain-signal-${i}-renewal`}
+                >
+                  Renews: {signal.renewalPrice}
+                </span>
+              )}
+            </div>
             <Badge
               variant="outline"
               className={`font-mono text-[9px] font-bold uppercase tracking-[0.08em] ${DOMAIN_STATUS_CLASSES[signal.status] ?? DOMAIN_STATUS_CLASSES.taken}`}
@@ -397,6 +426,22 @@ export function TrademarkSignalsRenderer({ content }) {
       >
         {content.disclaimer || DEFAULT_TRADEMARK_DISCLAIMER}
       </div>
+      {content.dataOrigin && (
+        <div
+          className="font-mono text-[9px] text-zinc-500"
+          data-testid="trademark-source-attribution"
+        >
+          Source: {content.dataOrigin}
+        </div>
+      )}
+      {content.sourceNote && (
+        <div
+          className="font-mono text-[9px] text-zinc-500 italic"
+          data-testid="trademark-source-note"
+        >
+          {content.sourceNote}
+        </div>
+      )}
       {content.selectedName && (
         <div className="font-mono text-[12px] font-bold text-zinc-200" data-testid="trademark-selected-name">
           {content.selectedName}

@@ -2,8 +2,11 @@ import express from "express";
 import cors from "cors";
 import pipelineRouter from "./routes/pipeline.js";
 import provisioningRouter from "./routes/provisioning.js";
+import executionRouter from "./routes/execution.js";
+import externalActionsRouter from "./routes/external-actions.js";
 import * as artifacts from "./artifacts.js";
 import { checkGhAvailability } from "./provisioning.js";
+import { checkAgentAvailability, cleanupAllBuilds, detectOrphanedProcesses } from "./execution.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,6 +19,12 @@ app.use("/api/pipeline", pipelineRouter);
 
 // Provisioning endpoints: /api/provisioning/*
 app.use("/api/provisioning", provisioningRouter);
+
+// Build execution endpoints: /api/execution/*
+app.use("/api/execution", executionRouter);
+
+// External actions endpoints: /api/external-actions/*
+app.use("/api/external-actions", externalActionsRouter);
 
 // Artifact retrieval at top-level /api/artifacts/:id
 // Artifacts filtered by project + stage (must be before /:id to avoid matching "project" as an id)
@@ -55,6 +64,35 @@ app.listen(PORT, async () => {
   } else {
     console.log(`[bridge] gh CLI: NOT AVAILABLE — provisioning will fail. Install: https://cli.github.com`);
   }
+
+  // Check agent CLI availability at startup
+  for (const agentType of ["claude", "codex"]) {
+    const agentResult = await checkAgentAvailability(agentType);
+    if (agentResult.available) {
+      console.log(`[bridge] ${agentType} CLI: available (version ${agentResult.version})`);
+    } else {
+      console.log(`[bridge] ${agentType} CLI: not available — builds with this agent will return 503`);
+    }
+  }
+
+  // Orphan detection on startup
+  detectOrphanedProcesses();
 });
+
+// ---------------------------------------------------------------------------
+// Graceful shutdown — kill active agent processes before exit
+// ---------------------------------------------------------------------------
+
+function handleShutdown(signal) {
+  console.log(`[bridge] received ${signal} — cleaning up active builds…`);
+  const result = cleanupAllBuilds();
+  console.log(
+    `[bridge] cleanup complete: ${result.killed} killed, ${result.alreadyDead} already dead, ${result.errors.length} errors`,
+  );
+  process.exit(0);
+}
+
+process.once("SIGTERM", () => handleShutdown("SIGTERM"));
+process.once("SIGINT", () => handleShutdown("SIGINT"));
 
 export default app;

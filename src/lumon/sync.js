@@ -151,6 +151,309 @@ export function useServerSync({ projectId, dispatch }) {
       }
     });
 
+    // ----- Build execution SSE listeners -----
+
+    es.addEventListener("build-agent-spawned", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-agent-spawned", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] build-agent-spawned projectId=${payload.projectId} agentId=${payload.agentId}`);
+          dispatch({
+            type: "lumon/update-build-agent",
+            payload: {
+              projectId: payload.projectId,
+              agentId: payload.agentId,
+              changes: {
+                agentType: payload.agentType,
+                status: "running",
+                pid: payload.pid,
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-agent-spawned event", err);
+      }
+    });
+
+    es.addEventListener("build-agent-output", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-agent-output", ...payload });
+
+        if (dispatch && payload.projectId && payload.agentId) {
+          dispatch({
+            type: "lumon/update-build-agent",
+            payload: {
+              projectId: payload.projectId,
+              agentId: payload.agentId,
+              changes: {
+                lastOutput: payload.line,
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-agent-output event", err);
+      }
+    });
+
+    es.addEventListener("build-agent-completed", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-agent-completed", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] build-agent-completed projectId=${payload.projectId} agentId=${payload.agentId}`);
+          if (payload.agentId) {
+            dispatch({
+              type: "lumon/update-build-agent",
+              payload: {
+                projectId: payload.projectId,
+                agentId: payload.agentId,
+                changes: {
+                  status: "completed",
+                  exitCode: payload.exitCode,
+                  elapsed: payload.elapsed,
+                },
+              },
+            });
+          }
+          dispatch({
+            type: "lumon/complete-build",
+            payload: { projectId: payload.projectId },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-agent-completed event", err);
+      }
+    });
+
+    es.addEventListener("build-agent-failed", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-agent-failed", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] build-agent-failed projectId=${payload.projectId} agentId=${payload.agentId} error=${payload.error}`);
+          if (payload.agentId) {
+            dispatch({
+              type: "lumon/update-build-agent",
+              payload: {
+                projectId: payload.projectId,
+                agentId: payload.agentId,
+                changes: {
+                  status: "failed",
+                  error: payload.error,
+                  elapsed: payload.elapsed,
+                },
+              },
+            });
+          }
+          dispatch({
+            type: "lumon/fail-build",
+            payload: {
+              projectId: payload.projectId,
+              error: payload.error ?? "Agent build failed",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-agent-failed event", err);
+      }
+    });
+
+    es.addEventListener("build-status", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-status", ...payload });
+
+        // build-status is an aggregate event — status transitions are already
+        // handled by the granular events above. Log for diagnostics.
+        if (payload.projectId) {
+          console.log(`[sync] build-status projectId=${payload.projectId} status=${payload.status}`);
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-status event", err);
+      }
+    });
+
+    // ----- Retry / escalation SSE listeners -----
+
+    es.addEventListener("build-retry-started", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-retry-started", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] build-retry-started projectId=${payload.projectId} agentId=${payload.agentId} retryCount=${payload.retryCount}`);
+          dispatch({
+            type: "lumon/retry-build-agent",
+            payload: {
+              projectId: payload.projectId,
+              agentId: payload.agentId,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-retry-started event", err);
+      }
+    });
+
+    es.addEventListener("build-escalation-raised", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-escalation-raised", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] build-escalation-raised projectId=${payload.projectId} reason=${payload.reason}`);
+          dispatch({
+            type: "lumon/escalate-build",
+            payload: {
+              projectId: payload.projectId,
+              reason: payload.reason ?? "Agent failure after retry exhausted",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-escalation-raised event", err);
+      }
+    });
+
+    es.addEventListener("build-escalation-acknowledged", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "build-escalation-acknowledged", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] build-escalation-acknowledged projectId=${payload.projectId} decision=${payload.decision}`);
+          dispatch({
+            type: "lumon/acknowledge-escalation",
+            payload: {
+              projectId: payload.projectId,
+              decision: payload.decision,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse build-escalation-acknowledged event", err);
+      }
+    });
+
+    // ----- External action SSE listeners -----
+
+    es.addEventListener("external-action-requested", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "external-action-requested", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] external-action-requested projectId=${payload.projectId} actionId=${payload.actionId}`);
+          dispatch({
+            type: "lumon/request-external-action",
+            payload: {
+              projectId: payload.projectId,
+              action: {
+                id: payload.actionId,
+                type: payload.type,
+                params: payload.params ?? {},
+                status: "pending",
+                requestedAt: payload.requestedAt ?? new Date().toISOString(),
+              },
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse external-action-requested event", err);
+      }
+    });
+
+    es.addEventListener("external-action-confirmed", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "external-action-confirmed", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] external-action-confirmed projectId=${payload.projectId} actionId=${payload.actionId}`);
+          dispatch({
+            type: "lumon/confirm-external-action",
+            payload: {
+              projectId: payload.projectId,
+              actionId: payload.actionId,
+              confirmedAt: payload.confirmedAt ?? new Date().toISOString(),
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse external-action-confirmed event", err);
+      }
+    });
+
+    es.addEventListener("external-action-completed", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "external-action-completed", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] external-action-completed projectId=${payload.projectId} actionId=${payload.actionId}`);
+          dispatch({
+            type: "lumon/complete-external-action",
+            payload: {
+              projectId: payload.projectId,
+              actionId: payload.actionId,
+              result: payload.result ?? null,
+              completedAt: payload.completedAt ?? new Date().toISOString(),
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse external-action-completed event", err);
+      }
+    });
+
+    es.addEventListener("external-action-failed", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "external-action-failed", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] external-action-failed projectId=${payload.projectId} actionId=${payload.actionId}`);
+          dispatch({
+            type: "lumon/fail-external-action",
+            payload: {
+              projectId: payload.projectId,
+              actionId: payload.actionId,
+              error: payload.error ?? "Unknown error",
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse external-action-failed event", err);
+      }
+    });
+
+    es.addEventListener("external-action-cancelled", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        setLastEvent({ type: "external-action-cancelled", ...payload });
+
+        if (dispatch && payload.projectId) {
+          console.log(`[sync] external-action-cancelled projectId=${payload.projectId} actionId=${payload.actionId}`);
+          dispatch({
+            type: "lumon/cancel-external-action",
+            payload: {
+              projectId: payload.projectId,
+              actionId: payload.actionId,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[sync] Failed to parse external-action-cancelled event", err);
+      }
+    });
+
     es.addEventListener("pipeline-status", (event) => {
       try {
         const payload = JSON.parse(event.data);

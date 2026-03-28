@@ -26,8 +26,9 @@ export const EXECUTION_CONFIG = {
     },
   },
   defaultTimeout: 300,          // seconds
+  agentTimeoutMs: parseInt(process.env.EXECUTION_AGENT_TIMEOUT_MS, 10) || 300_000,
   ringBufferSize: 1000,         // max lines retained per agent
-  validStatuses: new Set(["idle", "running", "completed", "failed"]),
+  validStatuses: new Set(["idle", "running", "completed", "failed", "escalated", "aborted", "timed-out"]),
 };
 
 // ---------------------------------------------------------------------------
@@ -98,4 +99,21 @@ export function getWebhookUrl(stageKey, subStage) {
 
   console.log(`[bridge] webhook-registry stageKey=${stageKey} source=none`);
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// External API credentials — injected into webhook trigger bodies
+// ---------------------------------------------------------------------------
+
+/**
+ * Read Porkbun API credentials from process.env.
+ * Returns `{ apiKey, apiSecret }` — values are `null` when env vars are unset.
+ * NEVER log the returned values.
+ * @returns {{ apiKey: string|null, apiSecret: string|null }}
+ */
+export function getPorkbunCredentials() {
+  return {
+    apiKey: process.env.PORKBUN_API_KEY || null,
+    apiSecret: process.env.PORKBUN_API_SECRET || null,
+  };
 }

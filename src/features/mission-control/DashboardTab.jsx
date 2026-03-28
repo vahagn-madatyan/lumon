@@ -32,6 +32,8 @@ import {
 import { useState } from "react";
 import TerminalPanel from "./TerminalPanel";
 import ArtifactRenderer from "./ArtifactRenderer";
+import BuildExecutionPanel from "./BuildExecutionPanel";
+import ExternalActionsPanel from "./ExternalActionsPanel";
 import { useArtifact } from "@/lumon/useArtifact";
 
 const CARD_ICONS = {
@@ -39,6 +41,7 @@ const CARD_ICONS = {
   total: Hash,
   cost: DollarSign,
   tokens: Zap,
+  escalations: ShieldAlert,
 };
 
 const TONE_CLASSES = {
@@ -46,6 +49,7 @@ const TONE_CLASSES = {
   info: "text-blue-400",
   warning: "text-amber-400",
   accent: "text-purple-400",
+  escalated: "text-amber-400",
 };
 
 const STATUS_CLASSES = {
@@ -979,6 +983,43 @@ function ProvisioningSection({ project }) {
   );
 }
 
+function ExternalActionsPanelWithDomainSignals({ project }) {
+  // Find the plan stage's domain signals artifact from the dossier stageOutputs
+  const planStage = project.dossier?.stageOutputs?.find((s) => s.stageKey === "plan");
+  // Domain signals may be a secondary artifact in the plan stage's multi-artifact output
+  // We try the first artifact, or use the single artifactId
+  const primaryArtifactId = planStage?.artifactIds?.[0] ?? planStage?.artifactId ?? null;
+  const { artifact: primaryArtifact } = useArtifact(primaryArtifactId);
+
+  // Check if the primary artifact is a domain_signals type; otherwise check secondary artifacts
+  const secondaryArtifactId = planStage?.artifactIds?.[1] ?? null;
+  const { artifact: secondaryArtifact } = useArtifact(secondaryArtifactId);
+
+  // Find the domain signals artifact — it has type: "domain_signals" and content.signals array
+  let domainSignals = null;
+  if (primaryArtifact?.type === "domain_signals") {
+    domainSignals = primaryArtifact.content;
+  } else if (secondaryArtifact?.type === "domain_signals") {
+    domainSignals = secondaryArtifact.content;
+  } else if (primaryArtifact?.content?.signals) {
+    domainSignals = primaryArtifact.content;
+  } else if (secondaryArtifact?.content?.signals) {
+    domainSignals = secondaryArtifact.content;
+  }
+
+  // Don't render ExternalActionsPanel if no actions and no domain signals
+  if (!project.externalActions?.hasActions && !domainSignals) {
+    return null;
+  }
+
+  return (
+    <ExternalActionsPanel
+      project={project}
+      domainSignals={domainSignals}
+    />
+  );
+}
+
 function HandoffPanel({ project }) {
   const packet = project.handoffPacket;
 
@@ -1029,6 +1070,8 @@ function HandoffPanel({ project }) {
         </div>
 
         <ProvisioningSection project={project} />
+        <ExternalActionsPanelWithDomainSignals project={project} />
+        <BuildExecutionPanel project={project} />
       </div>
     </ScrollArea>
   );
@@ -1310,6 +1353,16 @@ export default function DashboardTab({ onOpenNewProject }) {
                           <Badge variant="secondary" className="bg-zinc-800 text-zinc-500 text-[9px] border-none font-mono">
                             {project.agentCount} agent{project.agentCount === 1 ? "" : "s"}
                           </Badge>
+                          {project.buildExecution?.isEscalated && (
+                            <Badge
+                              variant="outline"
+                              className="font-mono text-[8px] font-bold uppercase tracking-[0.08em] bg-amber-500/15 text-amber-300 border-amber-500/30"
+                              data-testid={`dashboard-project-escalation-badge-${project.id}`}
+                            >
+                              <ShieldAlert size={9} className="mr-1" />
+                              Escalated
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </button>

@@ -4,6 +4,7 @@ import {
   LUMON_DOSSIER_SECTION_DEFINITIONS,
   LUMON_HANDOFF_PACKET_SECTION_DEFINITIONS,
   LUMON_PREBUILD_STAGE_KEYS,
+  VALID_BUILD_EXECUTION_STATUSES,
   buildLumonDossierStageSectionId,
   isStructuredOutput,
   getOutputSummary,
@@ -54,6 +55,25 @@ const PIPELINE_STATUS_META = {
   blocked: { label: "Blocked", summary: "Blocked until the requested changes land", tone: "blocked" },
   handoff_ready: { label: "Handoff ready", summary: "Ready for final handoff approval", tone: "handoff_ready" },
   complete: { label: "Complete", summary: "Pipeline approved through handoff", tone: "complete" },
+};
+
+const BUILD_EXECUTION_STATUS_META = {
+  idle: { label: "Idle", summary: "No build started", tone: "queued" },
+  running: { label: "Running", summary: "Agent build is active", tone: "running" },
+  completed: { label: "Completed", summary: "Agent build finished successfully", tone: "complete" },
+  failed: { label: "Failed", summary: "Agent build failed", tone: "failed" },
+  escalated: { label: "Escalated", summary: "Agent build escalated — operator action required", tone: "escalated" },
+};
+
+const CAN_START_BUILD_STATUSES = new Set(["idle", "completed", "failed"]);
+
+const EXTERNAL_ACTION_STATUS_META = {
+  pending:    { label: "Pending confirmation", tone: "waiting" },
+  confirmed:  { label: "Confirmed",            tone: "running" },
+  executing:  { label: "Executing…",           tone: "running" },
+  completed:  { label: "Completed",            tone: "complete" },
+  failed:     { label: "Failed",               tone: "failed" },
+  cancelled:  { label: "Cancelled",            tone: "idle" },
 };
 
 const resolveEngineLabel = (engineChoice) => (engineChoice === "codex" ? "Codex CLI" : "Claude Code");
@@ -779,6 +799,138 @@ const buildPipelineStatusSummary = (pipelineStatus, currentStage, currentGate) =
   return fallback;
 };
 
+const formatElapsedMs = (ms) => {
+  if (!ms || ms <= 0) return "—";
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+};
+
+const buildBuildExecutionAgentSummary = (agent) => {
+  const telemetry = agent.telemetry ?? null;
+  return {
+    agentId: agent.agentId,
+    agentType: agent.agentType ?? "claude",
+    status: agent.status ?? "running",
+    lastOutput: agent.lastOutput ?? agent.lastOutputLine ?? null,
+    elapsed: agent.elapsed ?? null,
+    elapsedLabel: formatElapsedMs(agent.elapsed),
+    tokens: agent.tokens ?? 0,
+    tokensLabel: agent.tokens > 0 ? `${(agent.tokens / 1000).toFixed(1)}k` : "—",
+    costUsd: agent.costUsd ?? 0,
+    costLabel: agent.costUsd > 0 ? formatCurrency(agent.costUsd) : "—",
+    pid: agent.pid ?? null,
+    telemetry: telemetry
+      ? {
+          tokens: telemetry.tokens ?? { input: 0, output: 0 },
+          costUsd: telemetry.costUsd ?? 0,
+          progress: telemetry.progress ?? 0,
+          lastOutputSummary: telemetry.lastOutputSummary ?? "",
+          tokensLabel: (telemetry.tokens?.input ?? 0) + (telemetry.tokens?.output ?? 0) > 0
+            ? formatTokenThousands((telemetry.tokens?.input ?? 0) + (telemetry.tokens?.output ?? 0))
+            : "—",
+          costLabel: (telemetry.costUsd ?? 0) > 0
+            ? formatCurrency(telemetry.costUsd)
+            : "—",
+        }
+      : null,
+  };
+};
+
+const buildBuildExecutionViewModel = (buildExecution, provisioning) => {
+  const status = buildExecution?.status ?? "idle";
+  const meta = BUILD_EXECUTION_STATUS_META[status] ?? BUILD_EXECUTION_STATUS_META.idle;
+  const agents = (buildExecution?.agents ?? []).map(buildBuildExecutionAgentSummary);
+  const provisioningComplete = provisioning?.status === "complete";
+  const canStartBuild = provisioningComplete && CAN_START_BUILD_STATUSES.has(status);
+
+  const elapsedMs = buildExecution?.startedAt
+    ? (buildExecution.completedAt
+        ? new Date(buildExecution.completedAt).getTime()
+        : Date.now()
+      ) - new Date(buildExecution.startedAt).getTime()
+    : null;
+
+  const escalation = buildExecution?.escalation ?? { status: "none", reason: null, acknowledgedAt: null, decision: null };
+  const isEscalated = escalation.status === "raised";
+  const isEscalationAcknowledged = escalation.status === "acknowledged";
+  const retryCount = buildExecution?.retryCount ?? 0;
+
+  return {
+    status,
+    statusLabel: meta.label,
+    statusSummary: meta.summary,
+    statusTone: meta.tone,
+    agents,
+    agentCount: agents.length,
+    startedAt: buildExecution?.startedAt ?? null,
+    completedAt: buildExecution?.completedAt ?? null,
+    error: buildExecution?.error ?? null,
+    elapsed: elapsedMs,
+    elapsedLabel: formatElapsedMs(elapsedMs),
+    canStartBuild,
+    provisioningComplete,
+    retryCount,
+    escalation: {
+      status: escalation.status,
+      reason: escalation.reason,
+      acknowledgedAt: escalation.acknowledgedAt,
+      decision: escalation.decision,
+    },
+    isEscalated,
+    isEscalationAcknowledged,
+    escalationReason: escalation.reason,
+    canRetry: isEscalated || (isEscalationAcknowledged && escalation.decision === "retry"),
+    canAbort: isEscalated,
+  };
+};
+
+const buildExternalActionViewModel = (action) => {
+  const status = action.status ?? "pending";
+  const meta = EXTERNAL_ACTION_STATUS_META[status] ?? EXTERNAL_ACTION_STATUS_META.pending;
+  const domainLabel = action.params?.domain ?? action.type ?? "Unknown";
+
+  return {
+    id: action.id,
+    type: action.type,
+    params: action.params ?? {},
+    status,
+    statusLabel: meta.label,
+    statusTone: meta.tone,
+    domainLabel,
+    requestedAt: action.requestedAt ?? null,
+    confirmedAt: action.confirmedAt ?? null,
+    completedAt: action.completedAt ?? null,
+    result: action.result ?? null,
+    error: action.error ?? null,
+    canConfirm: status === "pending",
+    canCancel: status === "pending" || status === "confirmed",
+    canExecute: status === "confirmed",
+  };
+};
+
+const buildExternalActionsViewModel = (externalActions) => {
+  const rawActions = externalActions?.actions ?? [];
+  const actions = rawActions.map(buildExternalActionViewModel);
+  const pendingCount = actions.filter((a) => a.status === "pending").length;
+  const confirmedCount = actions.filter((a) => a.status === "confirmed").length;
+  const completedCount = actions.filter((a) => a.status === "completed").length;
+  const failedCount = actions.filter((a) => a.status === "failed").length;
+
+  return {
+    actions,
+    pendingCount,
+    confirmedCount,
+    completedCount,
+    failedCount,
+    hasPending: pendingCount > 0,
+    hasConfirmed: confirmedCount > 0,
+    hasActions: actions.length > 0,
+  };
+};
+
 const buildProjectViewModel = (project, selection, agentsById, options = {}) => {
   const engineLabel = resolveEngineLabel(project.engineChoice);
   const agents = project.agents.map((agent) =>
@@ -885,6 +1037,9 @@ const buildProjectViewModel = (project, selection, agentsById, options = {}) => 
       })
     : null;
 
+  const buildExecution = buildBuildExecutionViewModel(project.buildExecution, project.provisioning);
+  const externalActions = buildExternalActionsViewModel(project.externalActions);
+
   return {
     id: project.id,
     name: project.name,
@@ -909,6 +1064,8 @@ const buildProjectViewModel = (project, selection, agentsById, options = {}) => 
     pipelineSummary: pipeline.summary,
     stageTimeline: stages,
     provisioning: project.provisioning,
+    buildExecution,
+    externalActions,
     ...(detailContract ?? {}),
   };
 };
@@ -1018,14 +1175,52 @@ const buildFloorProjectViewModel = (project, agents, index, paletteOffset) => {
 const buildFloorAgentViewModels = (state, projectViewModels = buildProjectListViewModels(state)) => {
   const projectViewModelById = new Map(projectViewModels.map((project) => [project.id, project]));
 
+  // Build an index of live build execution agents for location override
+  const buildAgentStatusByProject = new Map();
+  state.projects.forEach((project) => {
+    if (project.buildExecution?.status === "running" || project.buildExecution?.status === "failed" || project.buildExecution?.status === "escalated") {
+      const agentStatuses = (project.buildExecution.agents ?? []).reduce((map, a) => {
+        map.set(a.agentId, a.status ?? "running");
+        return map;
+      }, new Map());
+      buildAgentStatusByProject.set(project.id, agentStatuses);
+    }
+  });
+
   return selectAllAgents(state).map((agent) => {
     const projectState = projectViewModelById.get(agent.projectId);
-    const location =
-      agent.status === "failed"
-        ? "break-room"
-        : agent.status === "running"
-          ? "department"
-          : "amenity";
+
+    // Derive location from live build execution agents if a build is active
+    const buildAgentStatuses = buildAgentStatusByProject.get(agent.projectId);
+    const buildEscalation = state.projects.find((p) => p.id === agent.projectId)?.buildExecution?.escalation;
+    const buildRetryCount = state.projects.find((p) => p.id === agent.projectId)?.buildExecution?.retryCount ?? 0;
+    const isRetrying = buildRetryCount > 0 && buildAgentStatuses?.size > 0 &&
+      [...buildAgentStatuses.values()].some((s) => s === "running" || s === "spawned");
+    const isBuildEscalated = buildEscalation?.status === "raised";
+    let location;
+    if (isBuildEscalated) {
+      location = "break-room";
+    } else if (buildAgentStatuses && buildAgentStatuses.size > 0) {
+      // When a build is running, use the first build agent's status to drive floor location
+      // for the seeded agents (the build agents are the real runtime actors)
+      const buildStatuses = [...buildAgentStatuses.values()];
+      const hasRunning = buildStatuses.some((s) => s === "running" || s === "spawned");
+      const hasFailed = buildStatuses.some((s) => s === "failed");
+      if (hasFailed && agent.status !== "running") {
+        location = "break-room";
+      } else if (hasRunning) {
+        location = "department";
+      } else {
+        location = "amenity";
+      }
+    } else {
+      location =
+        agent.status === "failed"
+          ? "break-room"
+          : agent.status === "running"
+            ? "department"
+            : "amenity";
+    }
 
     return {
       ...buildAgentViewModel(agent, state.selection),
@@ -1043,6 +1238,10 @@ const buildFloorAgentViewModels = (state, projectViewModels = buildProjectListVi
       projectCurrentApprovalState: projectState?.pipeline.currentApprovalState ?? LUMON_APPROVAL_STATES.notRequired,
       projectCurrentApprovalSummary:
         projectState?.pipeline.currentApprovalSummary ?? APPROVAL_STATE_META[LUMON_APPROVAL_STATES.notRequired].summary,
+      projectBuildExecutionStatus: projectState?.buildExecution?.status ?? "idle",
+      isRetrying,
+      isBuildEscalated,
+      buildRetryCount,
       paletteIndex: stableHash(agent.id) % 8,
     };
   });
@@ -1072,12 +1271,28 @@ export const selectFleetMetrics = (state) => {
 export const selectDashboardCards = (state) => {
   const metrics = selectFleetMetrics(state);
 
-  return [
+  // Count projects with escalated build status
+  const escalatedCount = state.projects.filter(
+    (p) => p.buildExecution?.escalation?.status === "raised",
+  ).length;
+
+  const cards = [
     { id: "active", label: "Active", value: String(metrics.active), tone: "success" },
     { id: "total", label: "Total", value: String(metrics.total), tone: "info" },
     { id: "cost", label: "Cost", value: metrics.totalCostLabel, tone: "warning" },
     { id: "tokens", label: "Tokens", value: metrics.totalTokensLabel, tone: "accent" },
   ];
+
+  if (escalatedCount > 0) {
+    cards.push({
+      id: "escalations",
+      label: "Escalations",
+      value: String(escalatedCount),
+      tone: "escalated",
+    });
+  }
+
+  return cards;
 };
 
 export const selectDashboardProjects = (state) => buildProjectListViewModels(state);

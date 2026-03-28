@@ -1,7 +1,7 @@
 import { Router } from "express";
 import * as artifacts from "../artifacts.js";
 import * as pipeline from "../pipeline.js";
-import { getWebhookUrl, RESEARCH_SUB_STAGES, PLAN_SUB_STAGES, VERIFICATION_SUB_STAGES } from "../config.js";
+import { getWebhookUrl, getPorkbunCredentials, RESEARCH_SUB_STAGES, PLAN_SUB_STAGES, VERIFICATION_SUB_STAGES } from "../config.js";
 
 const router = Router();
 
@@ -105,6 +105,16 @@ async function fireWebhook({ projectId, stageKey, subStage = null, context = nul
       executionId: execution.executionId,
     };
     if (context) body.context = context;
+
+    // Inject Porkbun credentials for domain_signals sub-stage only (D032)
+    if (stageKey === "plan" && subStage === "domain_signals") {
+      const creds = getPorkbunCredentials();
+      if (!body.context) body.context = {};
+      body.context.porkbunApiKey = creds.apiKey;
+      body.context.porkbunApiSecret = creds.apiSecret;
+      const credStatus = creds.apiKey && creds.apiSecret ? "injected" : "missing";
+      console.log(`[bridge] fireWebhook projectId=${projectId} stageKey=${stageKey} subStage=${subStage} credentials=${credStatus}`);
+    }
 
     const response = await fetch(webhookUrl, {
       method: "POST",

@@ -454,7 +454,12 @@ describe("context in webhook POST body", () => {
       // fetchCalls[1] = auto-fired domain_signals webhook
       expect(fetchCalls).toHaveLength(2);
       expect(fetchCalls[1].body.subStage).toBe("domain_signals");
-      expect(fetchCalls[1].body.context).toEqual({ selectedName: "Nova" });
+      // Credential injection (D032) adds porkbunApiKey/porkbunApiSecret for domain_signals
+      expect(fetchCalls[1].body.context).toEqual({
+        selectedName: "Nova",
+        porkbunApiKey: null,
+        porkbunApiSecret: null,
+      });
     } finally {
       global.fetch = originalFetch;
     }

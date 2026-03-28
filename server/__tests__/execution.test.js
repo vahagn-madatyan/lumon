@@ -269,61 +269,96 @@ describe("startBuild — successful lifecycle", () => {
 // ===================================================================
 
 describe("startBuild — failed lifecycle", () => {
-  it("transitions to failed on non-zero exit code", async () => {
+  it("auto-retries on first non-zero exit, then escalates on second failure", async () => {
     const events = [];
-    const fakeProc = createFakeProcess(1111);
-    installMockSpawn(fakeProc);
+    const fakeProc1 = createFakeProcess(1111);
+    const fakeProc2 = createFakeProcess(1112);
+    let execCallCount = 0;
+
+    installMockSpawn(() => {
+      execCallCount++;
+      return execCallCount === 1 ? fakeProc1 : fakeProc2;
+    });
 
     const record = await startBuild(
       "proj-fail",
-      { workspacePath: "/tmp/fail-workspace", agentType: "claude" },
+      { workspacePath: "/tmp/fail-workspace", agentType: "claude", timeoutMs: 0 },
       { onAgentEvent: (ev) => events.push(ev) },
     );
 
     const agentId = record.agents[0].agentId;
 
-    // Simulate some output then failure
-    fakeProc.stdout.push("Starting...\n");
-    fakeProc.stderr.push("Error: something went wrong\n");
-    fakeProc.stdout.push(null);
-    fakeProc.stderr.push(null);
-    fakeProc.emit("close", 1, null);
-    await new Promise((r) => setTimeout(r, 10));
+    // First failure — triggers auto-retry
+    fakeProc1.stdout.push("Starting...\n");
+    fakeProc1.stderr.push("Error: something went wrong\n");
+    fakeProc1.stdout.push(null);
+    fakeProc1.stderr.push(null);
+    fakeProc1.emit("close", 1, null);
+    await new Promise((r) => setTimeout(r, 20));
 
-    const status = getStatus("proj-fail");
-    expect(status.status).toBe("failed");
-    expect(status.error).toContain("Exit code 1");
-    expect(status.agents[0].status).toBe("failed");
-    expect(status.agents[0].exitCode).toBe(1);
+    // After first failure, build is retrying (still "running")
+    let status = getStatus("proj-fail");
+    expect(status.status).toBe("running");
+    expect(status.agents[0].retryCount).toBe(1);
+    expect(events.some((e) => e.type === "retry-started")).toBe(true);
+
+    // Second failure — triggers escalation
+    fakeProc2.stdout.push(null);
+    fakeProc2.stderr.push("Error: still broken\n");
+    fakeProc2.stderr.push(null);
+    fakeProc2.emit("close", 1, null);
+    await new Promise((r) => setTimeout(r, 20));
+
+    status = getStatus("proj-fail");
+    expect(status.status).toBe("escalated");
+    expect(status.escalation).toBeTruthy();
+    expect(status.escalation.status).toBe("raised");
 
     // stderr captured in output buffer
     const output = getAgentOutput(agentId);
     expect(output.some((line) => line.includes("[stderr]"))).toBe(true);
-    expect(output.some((line) => line.includes("something went wrong"))).toBe(true);
 
-    // Failed event emitted
-    const failEvent = events.find((e) => e.type === "build-agent-failed");
-    expect(failEvent).toBeTruthy();
-    expect(failEvent.exitCode).toBe(1);
+    // Escalation event and failed event emitted
+    expect(events.some((e) => e.type === "escalation-raised")).toBe(true);
+    expect(events.some((e) => e.type === "build-agent-failed")).toBe(true);
   });
 
-  it("handles signal-killed processes", async () => {
-    const fakeProc = createFakeProcess(2222);
-    installMockSpawn(fakeProc);
+  it("handles signal-killed processes with auto-retry", async () => {
+    const fakeProc1 = createFakeProcess(2222);
+    const fakeProc2 = createFakeProcess(2223);
+    let execCallCount = 0;
 
-    await startBuild("proj-signal", {
-      workspacePath: "/tmp/signal-workspace",
-      agentType: "claude",
+    installMockSpawn(() => {
+      execCallCount++;
+      return execCallCount === 1 ? fakeProc1 : fakeProc2;
     });
 
-    fakeProc.stdout.push(null);
-    fakeProc.stderr.push(null);
-    fakeProc.emit("close", null, "SIGTERM");
-    await new Promise((r) => setTimeout(r, 10));
+    const events = [];
+    await startBuild(
+      "proj-signal",
+      { workspacePath: "/tmp/signal-workspace", agentType: "claude", timeoutMs: 0 },
+      { onAgentEvent: (ev) => events.push(ev) },
+    );
 
-    const status = getStatus("proj-signal");
-    expect(status.status).toBe("failed");
-    expect(status.error).toContain("SIGTERM");
+    // First signal kill — triggers auto-retry
+    fakeProc1.stdout.push(null);
+    fakeProc1.stderr.push(null);
+    fakeProc1.emit("close", null, "SIGTERM");
+    await new Promise((r) => setTimeout(r, 20));
+
+    let status = getStatus("proj-signal");
+    expect(status.status).toBe("running"); // retrying
+    expect(status.agents[0].retryCount).toBe(1);
+
+    // Second signal kill — escalates
+    fakeProc2.stdout.push(null);
+    fakeProc2.stderr.push(null);
+    fakeProc2.emit("close", null, "SIGTERM");
+    await new Promise((r) => setTimeout(r, 20));
+
+    status = getStatus("proj-signal");
+    expect(status.status).toBe("escalated");
+    expect(status.escalation.reason).toContain("SIGTERM");
   });
 
   it("handles process error event (ENOENT after spawn)", async () => {

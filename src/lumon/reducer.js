@@ -1,4 +1,4 @@
-import { createLumonState, createProject, createProjectId, reconcileSelection } from "./model";
+import { createLumonState, createProject, createProjectId, reconcileSelection, normalizeBuildExecutionState, normalizeEscalationState, normalizeExternalActionsState } from "./model";
 
 export const lumonActionTypes = {
   hydrate: "lumon/hydrate",
@@ -12,6 +12,19 @@ export const lumonActionTypes = {
   updateStage: "lumon/update-stage",
   appendArtifact: "lumon/append-artifact",
   updateProvisioning: "lumon/update-provisioning",
+  startBuild: "lumon/start-build",
+  updateBuildAgent: "lumon/update-build-agent",
+  completeBuild: "lumon/complete-build",
+  failBuild: "lumon/fail-build",
+  retryBuildAgent: "lumon/retry-build-agent",
+  escalateBuild: "lumon/escalate-build",
+  acknowledgeEscalation: "lumon/acknowledge-escalation",
+  updateBuildTelemetry: "lumon/update-build-telemetry",
+  requestExternalAction: "lumon/request-external-action",
+  confirmExternalAction: "lumon/confirm-external-action",
+  completeExternalAction: "lumon/complete-external-action",
+  failExternalAction: "lumon/fail-external-action",
+  cancelExternalAction: "lumon/cancel-external-action",
 };
 
 export const lumonActions = {
@@ -43,6 +56,58 @@ export const lumonActions = {
   updateProvisioning: (projectId, changes) => ({
     type: lumonActionTypes.updateProvisioning,
     payload: { projectId, changes },
+  }),
+  startBuild: (projectId) => ({
+    type: lumonActionTypes.startBuild,
+    payload: { projectId },
+  }),
+  updateBuildAgent: (projectId, agentId, changes) => ({
+    type: lumonActionTypes.updateBuildAgent,
+    payload: { projectId, agentId, changes },
+  }),
+  completeBuild: (projectId, data = {}) => ({
+    type: lumonActionTypes.completeBuild,
+    payload: { projectId, ...data },
+  }),
+  failBuild: (projectId, error) => ({
+    type: lumonActionTypes.failBuild,
+    payload: { projectId, error },
+  }),
+  retryBuildAgent: (projectId, agentId) => ({
+    type: lumonActionTypes.retryBuildAgent,
+    payload: { projectId, agentId },
+  }),
+  escalateBuild: (projectId, reason) => ({
+    type: lumonActionTypes.escalateBuild,
+    payload: { projectId, reason },
+  }),
+  acknowledgeEscalation: (projectId, decision) => ({
+    type: lumonActionTypes.acknowledgeEscalation,
+    payload: { projectId, decision },
+  }),
+  updateBuildTelemetry: (projectId, agentId, telemetry) => ({
+    type: lumonActionTypes.updateBuildTelemetry,
+    payload: { projectId, agentId, telemetry },
+  }),
+  requestExternalAction: (projectId, action) => ({
+    type: lumonActionTypes.requestExternalAction,
+    payload: { projectId, action },
+  }),
+  confirmExternalAction: (projectId, actionId, confirmedAt) => ({
+    type: lumonActionTypes.confirmExternalAction,
+    payload: { projectId, actionId, confirmedAt },
+  }),
+  completeExternalAction: (projectId, actionId, result, completedAt) => ({
+    type: lumonActionTypes.completeExternalAction,
+    payload: { projectId, actionId, result, completedAt },
+  }),
+  failExternalAction: (projectId, actionId, error) => ({
+    type: lumonActionTypes.failExternalAction,
+    payload: { projectId, actionId, error },
+  }),
+  cancelExternalAction: (projectId, actionId) => ({
+    type: lumonActionTypes.cancelExternalAction,
+    payload: { projectId, actionId },
   }),
 };
 
@@ -371,6 +436,484 @@ export function lumonReducer(state, action) {
           project,
           {
             provisioning: { ...project.provisioning, ...changes },
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.startBuild: {
+      const projectId = action.payload?.projectId;
+      if (!projectId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              status: "running",
+              agents: [],
+              startedAt: now,
+              completedAt: null,
+              error: null,
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.updateBuildAgent: {
+      const projectId = action.payload?.projectId;
+      const agentId = action.payload?.agentId;
+      const changes = action.payload?.changes;
+      if (!projectId || !agentId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        const existingAgents = project.buildExecution?.agents ?? [];
+        const agentIndex = existingAgents.findIndex((a) => a.agentId === agentId);
+        let nextAgents;
+        if (agentIndex >= 0) {
+          nextAgents = existingAgents.map((a, i) =>
+            i === agentIndex ? { ...a, ...changes } : a,
+          );
+        } else {
+          nextAgents = [
+            ...existingAgents,
+            { agentId, status: "running", ...changes },
+          ];
+        }
+
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              agents: nextAgents,
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.completeBuild: {
+      const projectId = action.payload?.projectId;
+      if (!projectId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              status: "completed",
+              completedAt: now,
+              error: null,
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.failBuild: {
+      const projectId = action.payload?.projectId;
+      const error = action.payload?.error ?? "Unknown build error";
+      if (!projectId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              status: "failed",
+              completedAt: now,
+              error,
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.retryBuildAgent: {
+      const projectId = action.payload?.projectId;
+      const agentId = action.payload?.agentId;
+      if (!projectId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        const existingAgents = project.buildExecution?.agents ?? [];
+        const nextAgents = existingAgents.map((a) =>
+          a.agentId === agentId ? { ...a, status: "running", error: null } : a,
+        );
+
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              status: "running",
+              retryCount: (project.buildExecution?.retryCount ?? 0) + 1,
+              agents: nextAgents,
+              escalation: { status: "none", reason: null, acknowledgedAt: null, decision: null },
+              error: null,
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.escalateBuild: {
+      const projectId = action.payload?.projectId;
+      const reason = action.payload?.reason ?? "Unknown escalation";
+      if (!projectId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              status: "escalated",
+              escalation: {
+                status: "raised",
+                reason,
+                acknowledgedAt: null,
+                decision: null,
+              },
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.acknowledgeEscalation: {
+      const projectId = action.payload?.projectId;
+      const decision = action.payload?.decision;
+      if (!projectId || !decision) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        const nextStatus = decision === "abort" ? "failed" : project.buildExecution?.status;
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              status: nextStatus,
+              escalation: {
+                ...normalizeEscalationState(project.buildExecution?.escalation),
+                status: "acknowledged",
+                acknowledgedAt: now,
+                decision,
+              },
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.updateBuildTelemetry: {
+      const projectId = action.payload?.projectId;
+      const agentId = action.payload?.agentId;
+      const telemetry = action.payload?.telemetry;
+      if (!projectId || !agentId || !telemetry) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        const existingAgents = project.buildExecution?.agents ?? [];
+        const agentIndex = existingAgents.findIndex((a) => a.agentId === agentId);
+        if (agentIndex < 0) {
+          return project;
+        }
+
+        changed = true;
+        const nextAgents = existingAgents.map((a, i) =>
+          i === agentIndex
+            ? { ...a, telemetry: { ...(a.telemetry ?? {}), ...telemetry } }
+            : a,
+        );
+
+        return touchProject(
+          project,
+          {
+            buildExecution: normalizeBuildExecutionState({
+              ...project.buildExecution,
+              agents: nextAgents,
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.requestExternalAction: {
+      const projectId = action.payload?.projectId;
+      const externalAction = action.payload?.action;
+      if (!projectId || !externalAction) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        changed = true;
+        const currentActions = project.externalActions?.actions ?? [];
+        return touchProject(
+          project,
+          {
+            externalActions: normalizeExternalActionsState({
+              actions: [...currentActions, externalAction],
+            }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.confirmExternalAction: {
+      const projectId = action.payload?.projectId;
+      const actionId = action.payload?.actionId;
+      if (!projectId || !actionId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        const currentActions = project.externalActions?.actions ?? [];
+        const actionIndex = currentActions.findIndex((a) => a.id === actionId);
+        if (actionIndex < 0) {
+          return project;
+        }
+
+        changed = true;
+        const nextActions = currentActions.map((a, i) =>
+          i === actionIndex
+            ? { ...a, status: "confirmed", confirmedAt: action.payload.confirmedAt ?? now }
+            : a,
+        );
+        return touchProject(
+          project,
+          {
+            externalActions: normalizeExternalActionsState({ actions: nextActions }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.completeExternalAction: {
+      const projectId = action.payload?.projectId;
+      const actionId = action.payload?.actionId;
+      if (!projectId || !actionId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        const currentActions = project.externalActions?.actions ?? [];
+        const actionIndex = currentActions.findIndex((a) => a.id === actionId);
+        if (actionIndex < 0) {
+          return project;
+        }
+
+        changed = true;
+        const nextActions = currentActions.map((a, i) =>
+          i === actionIndex
+            ? { ...a, status: "completed", result: action.payload.result ?? null, completedAt: action.payload.completedAt ?? now }
+            : a,
+        );
+        return touchProject(
+          project,
+          {
+            externalActions: normalizeExternalActionsState({ actions: nextActions }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.failExternalAction: {
+      const projectId = action.payload?.projectId;
+      const actionId = action.payload?.actionId;
+      if (!projectId || !actionId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        const currentActions = project.externalActions?.actions ?? [];
+        const actionIndex = currentActions.findIndex((a) => a.id === actionId);
+        if (actionIndex < 0) {
+          return project;
+        }
+
+        changed = true;
+        const nextActions = currentActions.map((a, i) =>
+          i === actionIndex
+            ? { ...a, status: "failed", error: action.payload.error ?? "Unknown error" }
+            : a,
+        );
+        return touchProject(
+          project,
+          {
+            externalActions: normalizeExternalActionsState({ actions: nextActions }),
+          },
+          now,
+        );
+      });
+
+      return changed ? buildState(state, projects) : state;
+    }
+
+    case lumonActionTypes.cancelExternalAction: {
+      const projectId = action.payload?.projectId;
+      const actionId = action.payload?.actionId;
+      if (!projectId || !actionId) {
+        return state;
+      }
+
+      const now = createActionTimestamp(action.payload?.now);
+      let changed = false;
+      const projects = state.projects.map((project) => {
+        if (project.id !== projectId) {
+          return project;
+        }
+
+        const currentActions = project.externalActions?.actions ?? [];
+        const actionIndex = currentActions.findIndex((a) => a.id === actionId);
+        if (actionIndex < 0) {
+          return project;
+        }
+
+        changed = true;
+        const nextActions = currentActions.map((a, i) =>
+          i === actionIndex
+            ? { ...a, status: "cancelled" }
+            : a,
+        );
+        return touchProject(
+          project,
+          {
+            externalActions: normalizeExternalActionsState({ actions: nextActions }),
           },
           now,
         );

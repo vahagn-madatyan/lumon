@@ -609,3 +609,188 @@ describe("ArtifactRenderer — verification type dispatch", () => {
     expect(screen.getByTestId("prototype-renderer")).toBeInTheDocument();
   });
 });
+
+// --- DomainSignalsRenderer — real Porkbun data ---
+
+describe("DomainSignalsRenderer — real Porkbun data", () => {
+  const realPorkbunContent = {
+    selectedName: "acmetools",
+    disclaimer: "Domain availability is a point-in-time check. Results may change. Pricing is sourced from Porkbun and subject to change.",
+    source: "porkbun-api",
+    dataOrigin: "Porkbun Domain Availability API",
+    signals: [
+      {
+        domain: "acmetools.com",
+        status: "available",
+        price: "$9.73/yr",
+        registrar: "Porkbun",
+        renewalPrice: "$9.73/yr",
+        regularPrice: "$9.73/yr",
+        premium: false,
+        firstYearPromo: false,
+      },
+      {
+        domain: "acmetools.io",
+        status: "available",
+        price: "$24.94/yr",
+        registrar: "Porkbun",
+        renewalPrice: "$32.00/yr",
+        regularPrice: "$32.00/yr",
+        premium: false,
+        firstYearPromo: true,
+      },
+      {
+        domain: "acmetools.dev",
+        status: "taken",
+        price: null,
+        registrar: "Porkbun",
+        renewalPrice: null,
+        regularPrice: null,
+        premium: false,
+        firstYearPromo: false,
+      },
+      {
+        domain: "acmetools.ai",
+        status: "premium",
+        price: "$2,500.00/yr",
+        registrar: "Porkbun",
+        renewalPrice: "$69.00/yr",
+        regularPrice: "$69.00/yr",
+        premium: true,
+        firstYearPromo: false,
+      },
+    ],
+  };
+
+  it("renders source attribution when dataOrigin is present", () => {
+    render(<DomainSignalsRenderer content={realPorkbunContent} />);
+    const attribution = screen.getByTestId("domain-source-attribution");
+    expect(attribution).toBeInTheDocument();
+    expect(attribution.textContent).toBe("Source: Porkbun Domain Availability API");
+  });
+
+  it("renders source attribution using content.source when dataOrigin is absent", () => {
+    const { dataOrigin, ...contentWithSource } = realPorkbunContent;
+    render(<DomainSignalsRenderer content={contentWithSource} />);
+    const attribution = screen.getByTestId("domain-source-attribution");
+    expect(attribution.textContent).toBe("Source: porkbun-api");
+  });
+
+  it("renders renewal price when present on a signal", () => {
+    render(<DomainSignalsRenderer content={realPorkbunContent} />);
+    const renewal0 = screen.getByTestId("domain-signal-0-renewal");
+    expect(renewal0).toBeInTheDocument();
+    expect(renewal0.textContent).toBe("Renews: $9.73/yr");
+
+    const renewal1 = screen.getByTestId("domain-signal-1-renewal");
+    expect(renewal1.textContent).toBe("Renews: $32.00/yr");
+  });
+
+  it("does not render renewal price when value is null", () => {
+    render(<DomainSignalsRenderer content={realPorkbunContent} />);
+    // Signal at index 2 (acmetools.dev) has renewalPrice: null
+    expect(screen.queryByTestId("domain-signal-2-renewal")).not.toBeInTheDocument();
+  });
+
+  it("renders PROMO badge when firstYearPromo is truthy", () => {
+    render(<DomainSignalsRenderer content={realPorkbunContent} />);
+    // Signal at index 1 (acmetools.io) has firstYearPromo: true
+    const promo = screen.getByTestId("domain-signal-1-promo");
+    expect(promo).toBeInTheDocument();
+    expect(promo.textContent).toBe("PROMO");
+  });
+
+  it("does not render PROMO badge when firstYearPromo is falsy", () => {
+    render(<DomainSignalsRenderer content={realPorkbunContent} />);
+    expect(screen.queryByTestId("domain-signal-0-promo")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("domain-signal-2-promo")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("domain-signal-3-promo")).not.toBeInTheDocument();
+  });
+
+  it("renders all four signals with correct statuses", () => {
+    render(<DomainSignalsRenderer content={realPorkbunContent} />);
+    expect(screen.getByTestId("domain-signal-0-status").textContent).toBe("available");
+    expect(screen.getByTestId("domain-signal-1-status").textContent).toBe("available");
+    expect(screen.getByTestId("domain-signal-2-status").textContent).toBe("taken");
+    expect(screen.getByTestId("domain-signal-3-status").textContent).toBe("premium");
+  });
+
+  it("backward compatibility: old simulated data shape renders identically (no source attribution)", () => {
+    const oldContent = {
+      selectedName: "Nexus",
+      signals: [
+        { domain: "nexus.com", status: "taken" },
+        { domain: "nexus.io", status: "available", price: "$29/yr" },
+      ],
+    };
+    render(<DomainSignalsRenderer content={oldContent} />);
+    expect(screen.getByTestId("domain-signals-renderer")).toBeInTheDocument();
+    expect(screen.queryByTestId("domain-source-attribution")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("domain-signal-0-promo")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("domain-signal-0-renewal")).not.toBeInTheDocument();
+    expect(screen.getByTestId("domain-signal-0-status").textContent).toBe("taken");
+    expect(screen.getByTestId("domain-signal-1-status").textContent).toBe("available");
+  });
+});
+
+// --- TrademarkSignalsRenderer — enhanced advisory ---
+
+describe("TrademarkSignalsRenderer — enhanced advisory", () => {
+  const enhancedContent = {
+    disclaimer: "ADVISORY ONLY — These results are generated from a simulated database for planning purposes and do not constitute legal advice. They do not represent actual USPTO TESS search results. Consult a qualified trademark attorney before making any business decisions based on this information.",
+    dataOrigin: "Simulated advisory database (not connected to USPTO TESS)",
+    sourceNote: "Trademark signals are illustrative. Real trademark clearance requires professional legal search services.",
+    selectedName: "AcmeTools",
+    signals: [
+      { mark: "ACME TOOLS", status: "live", class: "008", registrationNumber: "5678901", owner: "Acme Industries LLC" },
+      { mark: "ACMETOOLS", status: "dead", class: "009" },
+    ],
+  };
+
+  it("renders source attribution when dataOrigin is present", () => {
+    render(<TrademarkSignalsRenderer content={enhancedContent} />);
+    const attribution = screen.getByTestId("trademark-source-attribution");
+    expect(attribution).toBeInTheDocument();
+    expect(attribution.textContent).toBe("Source: Simulated advisory database (not connected to USPTO TESS)");
+  });
+
+  it("renders source note when sourceNote is present", () => {
+    render(<TrademarkSignalsRenderer content={enhancedContent} />);
+    const note = screen.getByTestId("trademark-source-note");
+    expect(note).toBeInTheDocument();
+    expect(note.textContent).toBe("Trademark signals are illustrative. Real trademark clearance requires professional legal search services.");
+  });
+
+  it("renders D026-compliant disclaimer text", () => {
+    render(<TrademarkSignalsRenderer content={enhancedContent} />);
+    const disclaimer = screen.getByTestId("trademark-advisory-disclaimer");
+    expect(disclaimer.textContent).toContain("ADVISORY ONLY");
+    expect(disclaimer.textContent).toContain("do not constitute legal advice");
+    expect(disclaimer.textContent).toContain("USPTO TESS");
+  });
+
+  it("renders signals with enhanced content", () => {
+    render(<TrademarkSignalsRenderer content={enhancedContent} />);
+    expect(screen.getByText("ACME TOOLS")).toBeInTheDocument();
+    expect(screen.getByText("#5678901")).toBeInTheDocument();
+    expect(screen.getByText("Acme Industries LLC")).toBeInTheDocument();
+    expect(screen.getByTestId("trademark-signal-0-status").textContent).toBe("live");
+    expect(screen.getByTestId("trademark-signal-1-status").textContent).toBe("dead");
+  });
+
+  it("backward compatibility: old data shape renders without source attribution", () => {
+    const oldContent = {
+      disclaimer: "Custom trademark disclaimer.",
+      selectedName: "Nexus",
+      signals: [
+        { mark: "NEXUS", status: "live", class: "009", registrationNumber: "1234567", owner: "Acme Corp" },
+      ],
+    };
+    render(<TrademarkSignalsRenderer content={oldContent} />);
+    expect(screen.getByTestId("trademark-signals-renderer")).toBeInTheDocument();
+    expect(screen.queryByTestId("trademark-source-attribution")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("trademark-source-note")).not.toBeInTheDocument();
+    expect(screen.getByTestId("trademark-advisory-disclaimer").textContent).toBe("Custom trademark disclaimer.");
+    expect(screen.getByText("NEXUS")).toBeInTheDocument();
+  });
+});

@@ -772,6 +772,14 @@ const VALID_PROVISIONING_STATUSES = new Set([
   "failed",
 ]);
 
+export const VALID_BUILD_EXECUTION_STATUSES = new Set([
+  "idle",
+  "running",
+  "completed",
+  "failed",
+  "escalated",
+]);
+
 const DEFAULT_PROVISIONING_STATE = Object.freeze({
   status: "idle",
   repoUrl: null,
@@ -793,6 +801,97 @@ export function normalizeProvisioningState(input) {
     error: typeof input.error === "string" ? input.error : null,
     steps: Array.isArray(input.steps) ? [...input.steps] : [],
     previewPlan: input.previewPlan != null && typeof input.previewPlan === "object" ? { ...input.previewPlan } : null,
+  };
+}
+
+const DEFAULT_ESCALATION_STATE = Object.freeze({
+  status: "none",
+  reason: null,
+  acknowledgedAt: null,
+  decision: null,
+});
+
+const DEFAULT_AGENT_TELEMETRY = Object.freeze({
+  tokens: Object.freeze({ input: 0, output: 0 }),
+  costUsd: 0,
+  progress: 0,
+  lastOutputSummary: "",
+});
+
+const VALID_ESCALATION_STATUSES = new Set(["none", "raised", "acknowledged"]);
+
+export function normalizeEscalationState(input) {
+  if (!input || typeof input !== "object") {
+    return { ...DEFAULT_ESCALATION_STATE };
+  }
+
+  return {
+    status: VALID_ESCALATION_STATUSES.has(input.status) ? input.status : "none",
+    reason: typeof input.reason === "string" ? input.reason : null,
+    acknowledgedAt: typeof input.acknowledgedAt === "string" ? input.acknowledgedAt : null,
+    decision: typeof input.decision === "string" ? input.decision : null,
+  };
+}
+
+export function normalizeAgentTelemetry(input) {
+  if (!input || typeof input !== "object") {
+    return { ...DEFAULT_AGENT_TELEMETRY, tokens: { ...DEFAULT_AGENT_TELEMETRY.tokens } };
+  }
+
+  const tokens = input.tokens && typeof input.tokens === "object"
+    ? { input: Number(input.tokens.input) || 0, output: Number(input.tokens.output) || 0 }
+    : { ...DEFAULT_AGENT_TELEMETRY.tokens };
+
+  return {
+    tokens,
+    costUsd: Number(input.costUsd) || 0,
+    progress: Number(input.progress) || 0,
+    lastOutputSummary: typeof input.lastOutputSummary === "string" ? input.lastOutputSummary : "",
+  };
+}
+
+const DEFAULT_BUILD_EXECUTION_STATE = Object.freeze({
+  status: "idle",
+  agents: [],
+  startedAt: null,
+  completedAt: null,
+  error: null,
+  retryCount: 0,
+  escalation: DEFAULT_ESCALATION_STATE,
+});
+
+const DEFAULT_EXTERNAL_ACTIONS_STATE = Object.freeze({
+  actions: [],
+});
+
+export function normalizeExternalActionsState(input) {
+  if (!input || typeof input !== "object") {
+    return { ...DEFAULT_EXTERNAL_ACTIONS_STATE };
+  }
+  return {
+    actions: Array.isArray(input.actions) ? [...input.actions] : [],
+  };
+}
+
+export function normalizeBuildExecutionState(input) {
+  if (!input || typeof input !== "object") {
+    return {
+      ...DEFAULT_BUILD_EXECUTION_STATE,
+      escalation: { ...DEFAULT_ESCALATION_STATE },
+    };
+  }
+
+  return {
+    status: VALID_BUILD_EXECUTION_STATUSES.has(input.status) ? input.status : "idle",
+    agents: Array.isArray(input.agents) ? input.agents.map((a) => ({
+      ...a,
+      telemetry: normalizeAgentTelemetry(a.telemetry),
+    })) : [],
+    startedAt: typeof input.startedAt === "string" ? input.startedAt : null,
+    completedAt: typeof input.completedAt === "string" ? input.completedAt : null,
+    error: typeof input.error === "string" ? input.error : null,
+    retryCount: Number.isFinite(Number(input.retryCount)) ? Number(input.retryCount) : 0,
+    escalation: normalizeEscalationState(input.escalation),
   };
 }
 
@@ -889,6 +988,8 @@ export function createProject(input = {}, options = {}) {
     agents,
     execution,
     provisioning: normalizeProvisioningState(input.provisioning),
+    buildExecution: normalizeBuildExecutionState(input.buildExecution),
+    externalActions: normalizeExternalActionsState(input.externalActions),
     meta: copyMeta(input.meta),
   };
 }
