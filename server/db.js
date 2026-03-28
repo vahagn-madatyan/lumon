@@ -80,6 +80,21 @@ const SCHEMA_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_external_actions_project
     ON external_actions (projectId);
+
+  CREATE TABLE IF NOT EXISTS audit_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    projectId   TEXT NOT NULL,
+    eventType   TEXT NOT NULL,
+    data        TEXT,
+    timestamp   TEXT NOT NULL DEFAULT (datetime('now')),
+    actor       TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_audit_events_project_time
+    ON audit_events (projectId, timestamp);
+
+  CREATE INDEX IF NOT EXISTS idx_audit_events_time
+    ON audit_events (timestamp);
 `;
 
 // ---------------------------------------------------------------------------
