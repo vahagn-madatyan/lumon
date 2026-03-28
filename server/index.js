@@ -6,7 +6,8 @@ import executionRouter from "./routes/execution.js";
 import externalActionsRouter from "./routes/external-actions.js";
 import * as artifacts from "./artifacts.js";
 import { checkGhAvailability } from "./provisioning.js";
-import { checkAgentAvailability, cleanupAllBuilds, detectOrphanedProcesses } from "./execution.js";
+import { checkAgentAvailability, cleanupAllBuilds, recoverBuilds } from "./execution.js";
+import { initialize as initializeDb, close as closeDb } from "./db.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -49,6 +50,17 @@ app.get("/api/artifacts/:id", (req, res) => {
 });
 
 app.listen(PORT, async () => {
+  // Initialize SQLite before accepting requests (skip in test — modules use in-memory fallback)
+  if (!process.env.VITEST) {
+    initializeDb();
+
+    // Recover builds that were running when the server last shut down
+    const recoveryResult = recoverBuilds();
+    if (recoveryResult.recovered > 0) {
+      console.log(`[bridge] recovered ${recoveryResult.recovered} interrupted build(s): ${recoveryResult.interrupted.join(", ")}`);
+    }
+  }
+
   const webhookUrl = process.env.N8N_WEBHOOK_URL;
   console.log(`[bridge] Express server listening on port ${PORT}`);
   if (webhookUrl) {
@@ -74,9 +86,6 @@ app.listen(PORT, async () => {
       console.log(`[bridge] ${agentType} CLI: not available — builds with this agent will return 503`);
     }
   }
-
-  // Orphan detection on startup
-  detectOrphanedProcesses();
 });
 
 // ---------------------------------------------------------------------------
@@ -89,6 +98,7 @@ function handleShutdown(signal) {
   console.log(
     `[bridge] cleanup complete: ${result.killed} killed, ${result.alreadyDead} already dead, ${result.errors.length} errors`,
   );
+  closeDb();
   process.exit(0);
 }
 
