@@ -9,12 +9,44 @@ import * as artifacts from "./artifacts.js";
 import { checkGhAvailability } from "./provisioning.js";
 import { checkAgentAvailability, cleanupAllBuilds, recoverBuilds } from "./execution.js";
 import { initialize as initializeDb, close as closeDb } from "./db.js";
+import { authMiddleware, authRouter, createRateLimiter } from "./middleware/auth.js";
+import { AUTH_CONFIG } from "./config.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+
+// Auth middleware — gates all requests behind Tailscale identity (with test/dev bypasses)
+app.use(authMiddleware);
+
+// Auth identity endpoint: GET /api/auth/identity
+app.use("/api/auth", authRouter);
+
+// Rate limiters for sensitive POST endpoints
+const pipelineTriggerLimiter = createRateLimiter(
+  AUTH_CONFIG.rateLimits.pipelineTrigger.maxRequests,
+  AUTH_CONFIG.rateLimits.pipelineTrigger.windowMs,
+);
+const executionStartLimiter = createRateLimiter(
+  AUTH_CONFIG.rateLimits.executionStart.maxRequests,
+  AUTH_CONFIG.rateLimits.executionStart.windowMs,
+);
+const externalActionsExecuteLimiter = createRateLimiter(
+  AUTH_CONFIG.rateLimits.externalActionsExecute.maxRequests,
+  AUTH_CONFIG.rateLimits.externalActionsExecute.windowMs,
+);
+const provisioningExecuteLimiter = createRateLimiter(
+  AUTH_CONFIG.rateLimits.provisioningExecute.maxRequests,
+  AUTH_CONFIG.rateLimits.provisioningExecute.windowMs,
+);
+
+// Apply rate limiters to specific sensitive POST paths
+app.post("/api/pipeline/trigger", pipelineTriggerLimiter);
+app.post("/api/execution/start", executionStartLimiter);
+app.post("/api/external-actions/execute/:actionId", externalActionsExecuteLimiter);
+app.post("/api/provisioning/execute", provisioningExecuteLimiter);
 
 // Pipeline endpoints: /api/pipeline/*
 app.use("/api/pipeline", pipelineRouter);

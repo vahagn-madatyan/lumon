@@ -7,6 +7,27 @@
  */
 
 // ---------------------------------------------------------------------------
+// Auth config — Tailscale identity gating and rate limiting
+// ---------------------------------------------------------------------------
+
+export const AUTH_CONFIG = {
+  /** When true, skip Tailscale header checks and use a dev identity */
+  devMode: process.env.LUMON_DEV_MODE === "true" || process.env.LUMON_DEV_MODE === "1",
+
+  /** Rate limit settings for sensitive POST endpoints */
+  rateLimits: {
+    /** Pipeline trigger — 10 requests per 60 seconds */
+    pipelineTrigger: { maxRequests: 10, windowMs: 60_000 },
+    /** Execution start — 10 requests per 60 seconds */
+    executionStart: { maxRequests: 10, windowMs: 60_000 },
+    /** External actions execute — 5 requests per 60 seconds */
+    externalActionsExecute: { maxRequests: 5, windowMs: 60_000 },
+    /** Provisioning execute — 5 requests per 60 seconds */
+    provisioningExecute: { maxRequests: 5, windowMs: 60_000 },
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Execution config — agent CLI command templates and build settings
 // ---------------------------------------------------------------------------
 
