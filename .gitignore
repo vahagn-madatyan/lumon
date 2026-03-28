@@ -180,3 +180,8 @@ dist/
 
 # ── GSD baseline (auto-generated) ──
 .gsd
+
+# SQLite database files
+server/data/*.db
+server/data/*.db-wal
+server/data/*.db-shm
