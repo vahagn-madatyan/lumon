@@ -54,7 +54,7 @@ router.post("/request", (req, res) => {
       params: action.params,
       status: action.status,
       requestedAt: action.requestedAt,
-    });
+    }, req.lumonUser?.login ?? null);
     console.log(
       `[external-actions] POST /request projectId=${projectId} actionId=${action.id}`,
     );
@@ -87,7 +87,7 @@ router.post("/confirm/:actionId", (req, res) => {
       actionId: action.id,
       status: action.status,
       confirmedAt: action.confirmedAt,
-    });
+    }, req.lumonUser?.login ?? null);
     console.log(
       `[external-actions] POST /confirm/${actionId} projectId=${projectId}`,
     );
@@ -119,7 +119,7 @@ router.post("/cancel/:actionId", (req, res) => {
     emitSSE(projectId, "external-action-cancelled", {
       actionId: action.id,
       status: action.status,
-    });
+    }, req.lumonUser?.login ?? null);
     console.log(
       `[external-actions] POST /cancel/${actionId} projectId=${projectId}`,
     );
@@ -186,7 +186,7 @@ router.post("/execute/:actionId", async (req, res) => {
         status: updated.status,
         result: updated.result,
         completedAt: updated.completedAt,
-      });
+      }, req.lumonUser?.login ?? null);
       console.log(
         `[external-actions] POST /execute/${actionId} projectId=${projectId} status=completed`,
       );
@@ -195,7 +195,7 @@ router.post("/execute/:actionId", async (req, res) => {
         actionId: updated.id,
         status: updated.status,
         error: updated.error,
-      });
+      }, req.lumonUser?.login ?? null);
       console.log(
         `[external-actions] POST /execute/${actionId} projectId=${projectId} status=failed`,
       );

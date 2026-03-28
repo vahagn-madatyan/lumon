@@ -24,6 +24,7 @@ export default function MissionControlShell() {
   const { addProject, selectAgent, selectProject } = useLumonActions();
   const [showNewProject, setShowNewProject] = useState(false);
   const [time, setTime] = useState(() => new Date());
+  const [operatorName, setOperatorName] = useState("TAILSCALE");
   const projectCount = state.projects.length;
   const registryBadgeLabel = useMemo(
     () => (projectCount === 0 ? "REGISTRY EMPTY" : `${projectCount} PROJECT${projectCount === 1 ? "" : "S"}`),
@@ -33,6 +34,24 @@ export default function MissionControlShell() {
   useEffect(() => {
     const intervalId = window.setInterval(() => setTime(new Date()), 1000);
     return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/identity")
+      .then((res) => {
+        if (!res.ok) throw new Error("identity fetch failed");
+        return res.json();
+      })
+      .then((data) => {
+        if (!cancelled && data.name) {
+          setOperatorName(data.name);
+        }
+      })
+      .catch(() => {
+        // Keep fallback "TAILSCALE" on error
+      });
+    return () => { cancelled = true; };
   }, []);
 
   const handleCreateProject = (draft) => {
@@ -81,7 +100,7 @@ export default function MissionControlShell() {
             </Badge>
             <Badge className="bg-emerald-500/15 text-emerald-400 border-emerald-500/30 font-mono text-[10px] font-semibold">
               <Shield size={10} className="mr-1.5" />
-              TAILSCALE
+              {operatorName}
             </Badge>
             <span className="font-mono text-[12px] text-zinc-500 tabular-nums">
               <Clock size={12} className="inline mr-1.5 opacity-50" />

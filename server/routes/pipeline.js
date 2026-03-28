@@ -18,7 +18,7 @@ const sseClients = new Map();
  * @param {string} eventType — e.g. "stage-update", "artifact-ready", "pipeline-status"
  * @param {object} data
  */
-function emitSSE(projectId, eventType, data) {
+function emitSSE(projectId, eventType, data, actor = null) {
   const clients = sseClients.get(projectId);
   if (!clients || clients.size === 0) return;
 
@@ -32,7 +32,7 @@ function emitSSE(projectId, eventType, data) {
   // Persist audit event for state-transition events; skip noisy build output
   if (eventType !== 'build-agent-output') {
     try {
-      logEvent(projectId, eventType, data);
+      logEvent(projectId, eventType, data, actor);
     } catch (err) {
       console.error('[audit] failed to log event:', err.message);
     }
@@ -191,10 +191,11 @@ router.post("/trigger", async (req, res) => {
   console.log(`[bridge] POST /api/pipeline/trigger projectId=${projectId} stageKey=${stageKey} executionId=${execution.executionId}`);
 
   // Emit SSE: pipeline status changed to "triggered"
+  const actor = req.lumonUser?.login ?? null;
   emitSSE(projectId, "pipeline-status", {
     stageKey,
     data: { status: execution.status, executionId: execution.executionId, subStage: effectiveSubStage },
-  });
+  }, actor);
 
   res.status(201).json({ executionId: execution.executionId, status: execution.status });
 });
@@ -232,11 +233,13 @@ router.post("/callback", async (req, res) => {
 
   console.log(`[bridge] POST /api/pipeline/callback projectId=${projectId} stageKey=${stageKey} subStage=${subStage || "none"} artifactId=${artifact.id}`);
 
+  const actor = req.lumonUser?.login ?? null;
+
   // Emit SSE: stage update
   emitSSE(projectId, "stage-update", {
     stageKey,
     data: { status: "awaiting_approval", resumeUrl: !!resumeUrl, subStage: subStage || null },
-  });
+  }, actor);
 
   // Emit SSE: artifact ready
   emitSSE(projectId, "artifact-ready", {
@@ -247,7 +250,7 @@ router.post("/callback", async (req, res) => {
       subStage: subStage || null,
       summary: typeof result?.content === "string" ? result.content.slice(0, 200) : "Artifact stored",
     },
-  });
+  }, actor);
 
   // Sequential orchestration: if this is a research sub-stage, check for next
   let nextTriggered = null;
@@ -362,12 +365,14 @@ router.post("/approve", async (req, res) => {
   pipeline.recordApproval({ projectId, stageKey, decision });
   console.log(`[bridge] POST /api/pipeline/approve projectId=${projectId} stageKey=${stageKey} decision=${decision}`);
 
+  const actor = req.lumonUser?.login ?? null;
+
   // Emit SSE: pipeline status changed after approval/rejection
   const stageExec = pipeline.getStageExecution(projectId, stageKey);
   emitSSE(projectId, "pipeline-status", {
     stageKey,
     data: { status: stageExec?.status ?? decision, decision },
-  });
+  }, actor);
 
   // Auto-trigger research after intake approval
   let autoTriggered = null;
@@ -389,7 +394,7 @@ router.post("/approve", async (req, res) => {
         emitSSE(projectId, "pipeline-status", {
           stageKey: "research",
           data: { status: "triggered", executionId: researchExec.executionId, subStage: RESEARCH_SUB_STAGES[0] },
-        });
+        }, actor);
       }
     } else {
       console.log(`[bridge] auto-trigger research skipped — no webhook configured projectId=${projectId}`);
@@ -415,7 +420,7 @@ router.post("/approve", async (req, res) => {
         emitSSE(projectId, "pipeline-status", {
           stageKey: "verification",
           data: { status: "triggered", executionId: verificationExec.executionId, subStage: VERIFICATION_SUB_STAGES[0] },
-        });
+        }, actor);
       }
     } else {
       console.log(`[bridge] auto-trigger verification skipped — no webhook configured projectId=${projectId}`);
