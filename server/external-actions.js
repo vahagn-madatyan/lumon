@@ -1,14 +1,50 @@
 import { randomUUID } from "node:crypto";
+import { getDb, getTestDb } from "./db.js";
 
 // ---------------------------------------------------------------------------
-// In-memory external-action state
+// Internal: lazy DB access (same pattern as pipeline.js from T02)
 // ---------------------------------------------------------------------------
 
-/** @type {Map<string, object[]>} projectId → ExternalAction[] */
-const actionsByProject = new Map();
+/** @type {import("better-sqlite3").Database | null} */
+let _fallbackDb = null;
 
-/** @type {Map<string, object>} actionId → ExternalAction (index for direct lookup) */
-const actionsById = new Map();
+/**
+ * Return the active database handle. In production the shared db module is
+ * initialised before any route handler runs. In tests, nobody calls
+ * db.initialize(), so getDb() throws — we fall back to an in-memory SQLite
+ * instance so that existing tests work without modification.
+ */
+function getDatabase() {
+  try {
+    return getDb();
+  } catch {
+    if (!_fallbackDb) {
+      _fallbackDb = getTestDb();
+    }
+    return _fallbackDb;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal: row → record conversion
+// ---------------------------------------------------------------------------
+
+function rowToRecord(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    type: row.type,
+    params: row.params ? JSON.parse(row.params) : {},
+    status: row.status,
+    requestedAt: row.requestedAt,
+    confirmedAt: row.confirmedAt ?? null,
+    executedAt: row.executedAt ?? null,
+    completedAt: row.completedAt ?? null,
+    result: row.result ? JSON.parse(row.result) : null,
+    error: row.error ?? null,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // State lifecycle
@@ -23,30 +59,33 @@ export function requestAction({ projectId, type, params }) {
   if (!projectId) throw new Error("projectId is required");
   if (!type) throw new Error("type is required");
 
-  const action = {
-    id: randomUUID(),
+  const db = getDatabase();
+  const id = randomUUID();
+  const requestedAt = new Date().toISOString();
+  const paramsJson = JSON.stringify(params ?? {});
+
+  db.prepare(`
+    INSERT INTO external_actions (id, projectId, type, params, status, requestedAt)
+    VALUES (?, ?, ?, ?, 'pending', ?)
+  `).run(id, projectId, type, paramsJson, requestedAt);
+
+  console.log(
+    `[external-actions] requested id=${id} project=${projectId} type=${type}`,
+  );
+
+  return {
+    id,
     projectId,
     type,
     params: params ?? {},
     status: "pending",
-    requestedAt: new Date().toISOString(),
+    requestedAt,
     confirmedAt: null,
     executedAt: null,
     completedAt: null,
     result: null,
     error: null,
   };
-
-  if (!actionsByProject.has(projectId)) {
-    actionsByProject.set(projectId, []);
-  }
-  actionsByProject.get(projectId).push(action);
-  actionsById.set(action.id, action);
-
-  console.log(
-    `[external-actions] requested id=${action.id} project=${projectId} type=${type}`,
-  );
-  return action;
 }
 
 /**
@@ -55,24 +94,27 @@ export function requestAction({ projectId, type, params }) {
  * @returns {object} The updated action
  */
 export function confirmAction({ projectId, actionId }) {
-  const action = actionsById.get(actionId);
-  if (!action) throw new Error(`Action not found: ${actionId}`);
-  if (action.projectId !== projectId) {
+  const db = getDatabase();
+  const row = db.prepare("SELECT * FROM external_actions WHERE id = ?").get(actionId);
+  if (!row) throw new Error(`Action not found: ${actionId}`);
+  if (row.projectId !== projectId) {
     throw new Error(`Action ${actionId} does not belong to project ${projectId}`);
   }
-  if (action.status !== "pending") {
+  if (row.status !== "pending") {
     throw new Error(
-      `Cannot confirm action in status '${action.status}' — must be 'pending'`,
+      `Cannot confirm action in status '${row.status}' — must be 'pending'`,
     );
   }
 
-  action.status = "confirmed";
-  action.confirmedAt = new Date().toISOString();
+  const confirmedAt = new Date().toISOString();
+  db.prepare("UPDATE external_actions SET status = 'confirmed', confirmedAt = ? WHERE id = ?")
+    .run(confirmedAt, actionId);
 
   console.log(
     `[external-actions] confirmed id=${actionId} project=${projectId}`,
   );
-  return action;
+
+  return rowToRecord({ ...row, status: "confirmed", confirmedAt });
 }
 
 /**
@@ -81,23 +123,26 @@ export function confirmAction({ projectId, actionId }) {
  * @returns {object} The updated action
  */
 export function cancelAction({ projectId, actionId }) {
-  const action = actionsById.get(actionId);
-  if (!action) throw new Error(`Action not found: ${actionId}`);
-  if (action.projectId !== projectId) {
+  const db = getDatabase();
+  const row = db.prepare("SELECT * FROM external_actions WHERE id = ?").get(actionId);
+  if (!row) throw new Error(`Action not found: ${actionId}`);
+  if (row.projectId !== projectId) {
     throw new Error(`Action ${actionId} does not belong to project ${projectId}`);
   }
-  if (action.status !== "pending" && action.status !== "confirmed") {
+  if (row.status !== "pending" && row.status !== "confirmed") {
     throw new Error(
-      `Cannot cancel action in status '${action.status}' — must be 'pending' or 'confirmed'`,
+      `Cannot cancel action in status '${row.status}' — must be 'pending' or 'confirmed'`,
     );
   }
 
-  action.status = "cancelled";
+  db.prepare("UPDATE external_actions SET status = 'cancelled' WHERE id = ?")
+    .run(actionId);
 
   console.log(
     `[external-actions] cancelled id=${actionId} project=${projectId}`,
   );
-  return action;
+
+  return rowToRecord({ ...row, status: "cancelled" });
 }
 
 /**
@@ -110,50 +155,59 @@ export function cancelAction({ projectId, actionId }) {
  * @returns {Promise<object>} The updated action with result or error
  */
 export async function executeAction({ projectId, actionId, provider }) {
-  const action = actionsById.get(actionId);
-  if (!action) throw new Error(`Action not found: ${actionId}`);
-  if (action.projectId !== projectId) {
+  const db = getDatabase();
+  const row = db.prepare("SELECT * FROM external_actions WHERE id = ?").get(actionId);
+  if (!row) throw new Error(`Action not found: ${actionId}`);
+  if (row.projectId !== projectId) {
     throw new Error(`Action ${actionId} does not belong to project ${projectId}`);
   }
 
   // ── THE CONFIRMATION GATE ──────────────────────────────────────────────
-  if (action.status !== "confirmed") {
+  if (row.status !== "confirmed") {
     const err = new Error(
-      `Execution rejected: action ${actionId} has status '${action.status}' — must be 'confirmed'`,
+      `Execution rejected: action ${actionId} has status '${row.status}' — must be 'confirmed'`,
     );
     err.code = "CONFIRMATION_REQUIRED";
     console.log(
-      `[external-actions] gate-rejected id=${actionId} status=${action.status}`,
+      `[external-actions] gate-rejected id=${actionId} status=${row.status}`,
     );
     throw err;
   }
 
-  action.status = "executing";
-  action.executedAt = new Date().toISOString();
+  const executedAt = new Date().toISOString();
+  db.prepare("UPDATE external_actions SET status = 'executing', executedAt = ? WHERE id = ?")
+    .run(executedAt, actionId);
 
   console.log(
     `[external-actions] executing id=${actionId} project=${projectId}`,
   );
 
   try {
-    const result = await provider(action.params);
-    action.status = "completed";
-    action.completedAt = new Date().toISOString();
-    action.result = result;
+    const result = await provider(row.params ? JSON.parse(row.params) : {});
+    const completedAt = new Date().toISOString();
+    db.prepare("UPDATE external_actions SET status = 'completed', completedAt = ?, result = ? WHERE id = ?")
+      .run(completedAt, JSON.stringify(result), actionId);
 
     console.log(
       `[external-actions] completed id=${actionId} project=${projectId}`,
     );
-    return action;
+
+    // Re-read to return consistent state
+    const updated = db.prepare("SELECT * FROM external_actions WHERE id = ?").get(actionId);
+    return rowToRecord(updated);
   } catch (providerErr) {
-    action.status = "failed";
-    action.completedAt = new Date().toISOString();
-    action.error = providerErr.message || "Provider execution failed";
+    const completedAt = new Date().toISOString();
+    const errorMsg = providerErr.message || "Provider execution failed";
+    db.prepare("UPDATE external_actions SET status = 'failed', completedAt = ?, error = ? WHERE id = ?")
+      .run(completedAt, errorMsg, actionId);
 
     console.log(
-      `[external-actions] failed id=${actionId} project=${projectId} error=${action.error}`,
+      `[external-actions] failed id=${actionId} project=${projectId} error=${errorMsg}`,
     );
-    return action;
+
+    // Re-read to return consistent state
+    const updated = db.prepare("SELECT * FROM external_actions WHERE id = ?").get(actionId);
+    return rowToRecord(updated);
   }
 }
 
@@ -167,7 +221,9 @@ export async function executeAction({ projectId, actionId, provider }) {
  * @returns {object[]}
  */
 export function getActions(projectId) {
-  return actionsByProject.get(projectId) ?? [];
+  const db = getDatabase();
+  const rows = db.prepare("SELECT * FROM external_actions WHERE projectId = ?").all(projectId);
+  return rows.map(rowToRecord);
 }
 
 /**
@@ -176,7 +232,9 @@ export function getActions(projectId) {
  * @returns {object|null}
  */
 export function getAction(actionId) {
-  return actionsById.get(actionId) ?? null;
+  const db = getDatabase();
+  const row = db.prepare("SELECT * FROM external_actions WHERE id = ?").get(actionId);
+  return row ? rowToRecord(row) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,9 +242,9 @@ export function getAction(actionId) {
 // ---------------------------------------------------------------------------
 
 /**
- * Clear all in-memory state. Used by tests.
+ * Clear all external-action state. Used by tests.
  */
 export function clear() {
-  actionsByProject.clear();
-  actionsById.clear();
+  const db = getDatabase();
+  db.prepare("DELETE FROM external_actions").run();
 }

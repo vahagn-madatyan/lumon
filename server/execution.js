@@ -1,5 +1,24 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import { EXECUTION_CONFIG } from "./config.js";
+import { getDb, getTestDb } from "./db.js";
+
+// ---------------------------------------------------------------------------
+// Internal: lazy DB access (same pattern as pipeline.js / external-actions.js)
+// ---------------------------------------------------------------------------
+
+/** @type {import("better-sqlite3").Database | null} */
+let _fallbackDb = null;
+
+function getDatabase() {
+  try {
+    return getDb();
+  } catch {
+    if (!_fallbackDb) {
+      _fallbackDb = getTestDb();
+    }
+    return _fallbackDb;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Test injection — matches _setExecFile / _resetExecFile from provisioning.js
@@ -56,7 +75,7 @@ export function createRingBuffer(capacity) {
 }
 
 // ---------------------------------------------------------------------------
-// In-memory execution state
+// In-memory execution state (HOT path for active builds)
 // ---------------------------------------------------------------------------
 
 /** @type {Map<string, object>} projectId → build execution record */
@@ -64,6 +83,81 @@ const executionState = new Map();
 
 /** @type {Map<string, object>} agentId → reference to agent record within a build */
 const agentIndex = new Map();
+
+// ---------------------------------------------------------------------------
+// SQLite write-through helpers
+// ---------------------------------------------------------------------------
+
+function persistBuildRecord(record) {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT OR REPLACE INTO build_executions (projectId, status, startedAt, completedAt, error, escalation)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    record.projectId,
+    record.status,
+    record.startedAt,
+    record.completedAt,
+    record.error,
+    record.escalation ? JSON.stringify(record.escalation) : null,
+  );
+}
+
+function persistAgentRecord(agentRecord, projectId) {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT OR REPLACE INTO build_agents (agentId, projectId, agentType, pid, status, startedAt, completedAt, exitCode, error, lastOutputLine, retryCount, telemetry)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    agentRecord.agentId,
+    projectId,
+    agentRecord.agentType,
+    agentRecord.pid,
+    agentRecord.status,
+    agentRecord.startedAt,
+    agentRecord.completedAt,
+    agentRecord.exitCode,
+    agentRecord.error,
+    agentRecord.lastOutputLine,
+    agentRecord.retryCount,
+    agentRecord.telemetry ? JSON.stringify(agentRecord.telemetry) : null,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SQLite read helper: reconstruct a status view from DB rows
+// ---------------------------------------------------------------------------
+
+function buildStatusFromDb(projectId) {
+  const db = getDatabase();
+  const buildRow = db.prepare("SELECT * FROM build_executions WHERE projectId = ?").get(projectId);
+  if (!buildRow) return null;
+
+  const agentRows = db.prepare("SELECT * FROM build_agents WHERE projectId = ?").all(projectId);
+
+  return {
+    projectId: buildRow.projectId,
+    status: buildRow.status,
+    startedAt: buildRow.startedAt,
+    completedAt: buildRow.completedAt,
+    error: buildRow.error,
+    escalation: buildRow.escalation ? JSON.parse(buildRow.escalation) : null,
+    agents: agentRows.map((a) => ({
+      agentId: a.agentId,
+      agentType: a.agentType,
+      pid: a.pid,
+      status: a.status,
+      startedAt: a.startedAt,
+      completedAt: a.completedAt,
+      exitCode: a.exitCode,
+      error: a.error,
+      lastOutputLine: a.lastOutputLine,
+      outputLines: 0, // No ring buffer for recovered builds
+      retryCount: a.retryCount,
+      telemetry: a.telemetry ? JSON.parse(a.telemetry) : null,
+    })),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Common telemetry shape
@@ -477,6 +571,11 @@ function wireAgentProcess(proc, record, agentRecord, onAgentEvent, timeoutMs) {
       record.status = "completed";
       record.completedAt = new Date().toISOString();
       console.log(`[execution] agent ${agentId} completed (PID ${pid}, ${elapsed}ms)`);
+
+      // Write-through to SQLite
+      persistAgentRecord(agentRecord, projectId);
+      persistBuildRecord(record);
+
       if (onAgentEvent) {
         onAgentEvent({ type: "build-agent-completed", projectId, agentId, exitCode: code, elapsed });
       }
@@ -505,6 +604,10 @@ function wireAgentProcess(proc, record, agentRecord, onAgentEvent, timeoutMs) {
       agentRecord.status = "retrying";
       record.status = "running"; // keep the build running during retry
       console.log(`[execution] auto-retrying agent ${agentId} (attempt ${agentRecord.retryCount})`);
+
+      // Write-through to SQLite
+      persistAgentRecord(agentRecord, projectId);
+      persistBuildRecord(record);
 
       if (onAgentEvent) {
         onAgentEvent({
@@ -538,6 +641,10 @@ function wireAgentProcess(proc, record, agentRecord, onAgentEvent, timeoutMs) {
 
       console.error(`[execution] escalation raised for ${projectId}: ${record.escalation.reason}`);
 
+      // Write-through to SQLite
+      persistAgentRecord(agentRecord, projectId);
+      persistBuildRecord(record);
+
       if (onAgentEvent) {
         onAgentEvent({
           type: "escalation-raised",
@@ -569,6 +676,10 @@ function wireAgentProcess(proc, record, agentRecord, onAgentEvent, timeoutMs) {
     record.error = `Process error: ${err.message}`;
     record.completedAt = new Date().toISOString();
     console.error(`[execution] agent ${agentId} process error: ${err.message}`);
+
+    // Write-through to SQLite
+    persistAgentRecord(agentRecord, projectId);
+    persistBuildRecord(record);
 
     if (onAgentEvent) {
       onAgentEvent({ type: "build-agent-failed", projectId, agentId, error: err.message });
@@ -603,6 +714,11 @@ function respawnAgent(record, agentRecord, onAgentEvent, timeoutMs) {
     record.error = agentRecord.error;
     record.completedAt = new Date().toISOString();
     console.error(`[execution] retry spawn failed for ${projectId}: ${spawnErr.message}`);
+
+    // Write-through to SQLite
+    persistAgentRecord(agentRecord, projectId);
+    persistBuildRecord(record);
+
     if (onAgentEvent) {
       onAgentEvent({ type: "build-agent-failed", projectId, agentId, error: spawnErr.message });
     }
@@ -618,6 +734,11 @@ function respawnAgent(record, agentRecord, onAgentEvent, timeoutMs) {
   agentRecord.telemetry = createDefaultTelemetry();
 
   console.log(`[execution] agent ${agentId} re-spawned with PID ${proc.pid} (retry ${agentRecord.retryCount})`);
+
+  // Write-through to SQLite
+  persistAgentRecord(agentRecord, projectId);
+  persistBuildRecord(record);
+
   if (onAgentEvent) {
     onAgentEvent({ type: "build-agent-spawned", projectId, agentId, agentType, pid: proc.pid });
   }
@@ -692,6 +813,10 @@ export async function startBuild(projectId, config, { onAgentEvent } = {}) {
     record.error = `Spawn failed: ${spawnErr.message}`;
     record.completedAt = new Date().toISOString();
     console.error(`[execution] spawn failed for ${projectId}: ${spawnErr.message}`);
+
+    // Write-through to SQLite
+    persistBuildRecord(record);
+
     if (onAgentEvent) {
       onAgentEvent({ type: "build-agent-failed", projectId, agentId, error: spawnErr.message });
     }
@@ -704,6 +829,10 @@ export async function startBuild(projectId, config, { onAgentEvent } = {}) {
   agentIndex.set(agentId, agentRecord);
 
   console.log(`[execution] agent ${agentId} spawned with PID ${pid}`);
+
+  // Write-through to SQLite
+  persistBuildRecord(record);
+  persistAgentRecord(agentRecord, projectId);
 
   // Emit spawned event
   if (onAgentEvent) {
@@ -756,6 +885,11 @@ export function retryAgent(projectId, agentId) {
   const timeoutMs = record._config?.timeoutMs ?? EXECUTION_CONFIG.agentTimeoutMs;
 
   console.log(`[execution] manual retry for agent ${agentId} in ${projectId} (attempt ${agentRecord.retryCount})`);
+
+  // Write-through to SQLite
+  persistAgentRecord(agentRecord, projectId);
+  persistBuildRecord(record);
+
   if (onAgentEvent) {
     onAgentEvent({
       type: "retry-started",
@@ -797,6 +931,9 @@ export function acknowledgeEscalation(projectId, decision) {
   const onAgentEvent = record._onAgentEvent;
   console.log(`[execution] escalation acknowledged for ${projectId}: decision=${decision}`);
 
+  // Write-through to SQLite
+  persistBuildRecord(record);
+
   if (onAgentEvent) {
     onAgentEvent({
       type: "escalation-acknowledged",
@@ -819,6 +956,10 @@ export function acknowledgeEscalation(projectId, decision) {
     record.status = "aborted";
     record.completedAt = new Date().toISOString();
     console.log(`[execution] build aborted for ${projectId}`);
+
+    // Write-through to SQLite
+    persistBuildRecord(record);
+
     return getStatus(projectId);
   }
 
@@ -831,15 +972,33 @@ export function acknowledgeEscalation(projectId, decision) {
 
 /**
  * Get all active escalations across projects.
+ * Checks both in-memory and SQLite for completeness.
  * @returns {Array<{ projectId: string, escalation: object }>}
  */
 export function getActiveEscalations() {
   const results = [];
+  const seen = new Set();
+
+  // In-memory first (active builds)
   for (const [projectId, record] of executionState) {
     if (record.escalation && record.escalation.status === "raised") {
       results.push({ projectId, escalation: { ...record.escalation } });
+      seen.add(projectId);
     }
   }
+
+  // SQLite for historical (not in memory)
+  const db = getDatabase();
+  const rows = db.prepare("SELECT projectId, escalation FROM build_executions WHERE status = 'escalated' AND escalation IS NOT NULL").all();
+  for (const row of rows) {
+    if (!seen.has(row.projectId)) {
+      const escalation = JSON.parse(row.escalation);
+      if (escalation.status === "raised") {
+        results.push({ projectId: row.projectId, escalation });
+      }
+    }
+  }
+
   return results;
 }
 
@@ -849,17 +1008,27 @@ export function getActiveEscalations() {
 
 /**
  * Get all projectIds with active (running or escalated) builds.
- * Useful for cleanup sweeps and dashboard fleet views.
+ * Checks both in-memory and SQLite.
  * @returns {string[]}
  */
 export function getActiveBuilds() {
-  const results = [];
+  const results = new Set();
+
+  // In-memory first
   for (const [projectId, record] of executionState) {
     if (record.status === "running" || record.status === "escalated") {
-      results.push(projectId);
+      results.add(projectId);
     }
   }
-  return results;
+
+  // SQLite for historical
+  const db = getDatabase();
+  const rows = db.prepare("SELECT projectId FROM build_executions WHERE status IN ('running', 'escalated')").all();
+  for (const row of rows) {
+    results.add(row.projectId);
+  }
+
+  return [...results];
 }
 
 // ---------------------------------------------------------------------------
@@ -868,37 +1037,42 @@ export function getActiveBuilds() {
 
 /**
  * Get current build execution status for a project.
+ * Reads from in-memory first (active builds), falls back to SQLite (historical).
  * @param {string} projectId
  * @returns {object|null}
  */
 export function getStatus(projectId) {
+  // In-memory first (active builds with volatile data)
   const record = executionState.get(projectId);
-  if (!record) return null;
+  if (record) {
+    return {
+      projectId: record.projectId,
+      status: record.status,
+      startedAt: record.startedAt,
+      completedAt: record.completedAt,
+      error: record.error,
+      escalation: record.escalation ? { ...record.escalation } : null,
+      agents: record.agents.map((a) => ({
+        agentId: a.agentId,
+        agentType: a.agentType,
+        pid: a.pid,
+        status: a.status,
+        startedAt: a.startedAt,
+        completedAt: a.completedAt,
+        exitCode: a.exitCode,
+        error: a.error,
+        lastOutputLine: a.lastOutputLine,
+        outputLines: a.outputBuffer.length,
+        retryCount: a.retryCount,
+        telemetry: a.telemetry
+          ? { ...a.telemetry, tokens: { ...a.telemetry.tokens } }
+          : null,
+      })),
+    };
+  }
 
-  return {
-    projectId: record.projectId,
-    status: record.status,
-    startedAt: record.startedAt,
-    completedAt: record.completedAt,
-    error: record.error,
-    escalation: record.escalation ? { ...record.escalation } : null,
-    agents: record.agents.map((a) => ({
-      agentId: a.agentId,
-      agentType: a.agentType,
-      pid: a.pid,
-      status: a.status,
-      startedAt: a.startedAt,
-      completedAt: a.completedAt,
-      exitCode: a.exitCode,
-      error: a.error,
-      lastOutputLine: a.lastOutputLine,
-      outputLines: a.outputBuffer.length,
-      retryCount: a.retryCount,
-      telemetry: a.telemetry
-        ? { ...a.telemetry, tokens: { ...a.telemetry.tokens } }
-        : null,
-    })),
-  };
+  // Fall back to SQLite (historical/recovered builds)
+  return buildStatusFromDb(projectId);
 }
 
 /**
@@ -966,11 +1140,37 @@ export function cleanupAllBuilds() {
     `[execution] cleanup: ${results.killed} killed, ${results.alreadyDead} already dead, ${results.errors.length} errors (${total} PIDs checked)`,
   );
 
-  // Clear state after cleanup
+  // Clear in-memory state after cleanup
   executionState.clear();
   agentIndex.clear();
 
   return results;
+}
+
+/**
+ * Recover builds that were 'running' when the server last stopped.
+ * Marks them as 'interrupted' with a completedAt timestamp.
+ * Replaces the advisory-only detectOrphanedProcesses.
+ *
+ * @returns {{ recovered: number, interrupted: string[] }}
+ */
+export function recoverBuilds() {
+  const db = getDatabase();
+  const completedAt = new Date().toISOString();
+  const rows = db.prepare("SELECT projectId FROM build_executions WHERE status = 'running'").all();
+
+  const interrupted = [];
+  for (const row of rows) {
+    db.prepare("UPDATE build_executions SET status = 'interrupted', completedAt = ? WHERE projectId = ?")
+      .run(completedAt, row.projectId);
+    db.prepare("UPDATE build_agents SET status = 'interrupted', completedAt = ? WHERE projectId = ? AND status IN ('running', 'retrying')")
+      .run(completedAt, row.projectId);
+    interrupted.push(row.projectId);
+    console.log(`[execution] recovered interrupted build for ${row.projectId}`);
+  }
+
+  console.log(`[execution] recovery: ${interrupted.length} build(s) marked as interrupted`);
+  return { recovered: interrupted.length, interrupted };
 }
 
 /**
@@ -1032,8 +1232,14 @@ export function detectOrphanedProcesses() {
 
 /**
  * Clear all execution state. Used for test cleanup.
+ * Clears both in-memory Maps AND SQLite tables.
  */
 export function clear() {
   executionState.clear();
   agentIndex.clear();
+
+  // Also clear SQLite tables
+  const db = getDatabase();
+  db.prepare("DELETE FROM build_agents").run();
+  db.prepare("DELETE FROM build_executions").run();
 }
