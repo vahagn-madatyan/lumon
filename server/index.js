@@ -4,6 +4,7 @@ import pipelineRouter from "./routes/pipeline.js";
 import provisioningRouter from "./routes/provisioning.js";
 import executionRouter from "./routes/execution.js";
 import externalActionsRouter from "./routes/external-actions.js";
+import auditRouter from "./routes/audit.js";
 import * as artifacts from "./artifacts.js";
 import { checkGhAvailability } from "./provisioning.js";
 import { checkAgentAvailability, cleanupAllBuilds, recoverBuilds } from "./execution.js";
@@ -26,6 +27,9 @@ app.use("/api/execution", executionRouter);
 
 // External actions endpoints: /api/external-actions/*
 app.use("/api/external-actions", externalActionsRouter);
+
+// Audit endpoints: /api/audit/*
+app.use("/api/audit", auditRouter);
 
 // Artifact retrieval at top-level /api/artifacts/:id
 // Artifacts filtered by project + stage (must be before /:id to avoid matching "project" as an id)

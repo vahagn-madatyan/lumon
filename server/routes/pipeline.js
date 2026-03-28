@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as artifacts from "../artifacts.js";
 import * as pipeline from "../pipeline.js";
 import { getWebhookUrl, getPorkbunCredentials, RESEARCH_SUB_STAGES, PLAN_SUB_STAGES, VERIFICATION_SUB_STAGES } from "../config.js";
+import { logEvent } from "../audit.js";
 
 const router = Router();
 
@@ -27,6 +28,15 @@ function emitSSE(projectId, eventType, data) {
   }
 
   console.log(`[bridge] SSE emit event=${eventType} projectId=${projectId} clients=${clients.size}`);
+
+  // Persist audit event for state-transition events; skip noisy build output
+  if (eventType !== 'build-agent-output') {
+    try {
+      logEvent(projectId, eventType, data);
+    } catch (err) {
+      console.error('[audit] failed to log event:', err.message);
+    }
+  }
 }
 
 /** Expose for tests. */
