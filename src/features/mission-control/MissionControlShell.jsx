@@ -11,6 +11,7 @@ import { createProjectSpawnInput } from "@/lumon/model";
 import { selectFleetMetrics, selectFloorViewModel } from "@/lumon/selectors";
 import SeveranceFloor from "@/severance-floor";
 import { Clock, Shield } from "lucide-react";
+import ActivityTab from "./ActivityTab";
 import ArchitectureTab from "./ArchitectureTab";
 import DashboardTab from "./DashboardTab";
 import NewProjectModal from "./NewProjectModal";
@@ -66,6 +67,9 @@ export default function MissionControlShell() {
             <TabsTrigger value="architecture" className="font-mono text-[11px] font-semibold tracking-wide data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 text-zinc-500">
               Architecture
             </TabsTrigger>
+            <TabsTrigger value="activity" className="font-mono text-[11px] font-semibold tracking-wide data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 text-zinc-500">
+              Activity
+            </TabsTrigger>
             <TabsTrigger value="severed-floor" className="font-mono text-[11px] font-semibold tracking-wide data-[state=active]:bg-emerald-500/15 data-[state=active]:text-emerald-400 text-zinc-500">
               Severed Floor
             </TabsTrigger>
@@ -96,6 +100,10 @@ export default function MissionControlShell() {
 
         <TabsContent value="architecture" className="flex-1 overflow-auto m-0">
           <ArchitectureTab />
+        </TabsContent>
+
+        <TabsContent value="activity" className="flex-1 overflow-auto m-0">
+          <ActivityTab />
         </TabsContent>
 
         <TabsContent value="severed-floor" className="flex-1 overflow-hidden m-0">
