@@ -1,7 +1,7 @@
 import { createLumonState } from "./model";
 
-export const LUMON_REGISTRY_STORAGE_KEY = "lumon.registry.v1";
-export const LUMON_REGISTRY_VERSION = 1;
+export const LUMON_REGISTRY_STORAGE_KEY = "lumon.registry.v2";
+export const LUMON_REGISTRY_VERSION = 2;
 export const LUMON_REGISTRY_ENVELOPE_KIND = "lumon-registry";
 
 const getBrowserStorage = () => {

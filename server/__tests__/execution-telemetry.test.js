@@ -505,7 +505,7 @@ describe("telemetry integration with agent events", () => {
     proc.emit("close", 0, null);
   });
 
-  it("includes telemetry snapshot in build-agent-output events for Codex agent", async () => {
+  it.skip("includes telemetry snapshot in build-agent-output events for Codex agent — skipped: codex removed", async () => {
     const events = [];
     const proc = createFakeProcess(2002);
     installMockSpawn(proc);
@@ -762,7 +762,7 @@ describe("spawn config includes output format flags", () => {
     proc.emit("close", 0, null);
   });
 
-  it("Codex agent includes --json in exec args", async () => {
+  it.skip("Codex agent includes --json in exec args — skipped: codex removed", async () => {
     let capturedArgs;
     const proc = createFakeProcess(4002);
     _setSpawn((cmd, args, opts) => {

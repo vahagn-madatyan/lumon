@@ -96,14 +96,14 @@ const createEarlyStageProject = ({ id = "early-test", name = "Early Stage" } = {
     name,
     description: "Project not yet at handoff.",
     phaseLabel: "Phase 1 — Operator Intake",
-    engineChoice: "codex",
+    engineChoice: "claude",
     agents,
     waves: { current: 1, total: 1 },
     execution: {
       stages: createCanonicalPrebuildStages({
         projectId: id,
         projectName: name,
-        engineChoice: "codex",
+        engineChoice: "claude",
         agents,
         waveCount: 1,
         stageOverrides: {
@@ -516,17 +516,17 @@ describe("Provisioning UI in HandoffPanel", () => {
   });
 
   describe("engine label display", () => {
-    it("displays 'Codex CLI' for codex engine choice", () => {
-      const codexPlan = { ...SAMPLE_PREVIEW_PLAN, engineChoice: "codex" };
+    it("displays 'Claude Code' for claude engine choice", () => {
+      const claudePlan = { ...SAMPLE_PREVIEW_PLAN, engineChoice: "claude" };
 
       renderHandoffTab(createHandoffReadyProject({
         provisioning: {
           status: "confirming",
-          previewPlan: codexPlan,
+          previewPlan: claudePlan,
         },
       }));
 
-      expect(screen.getByTestId("provisioning-plan-engine")).toHaveTextContent("Codex CLI");
+      expect(screen.getByTestId("provisioning-plan-engine")).toHaveTextContent("Claude Code");
     });
   });
 });

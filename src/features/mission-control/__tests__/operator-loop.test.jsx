@@ -134,7 +134,7 @@ describe("Operator loop integration", () => {
     fireEvent.change(screen.getByLabelText(/description/i), {
       target: { value: "Full loop integration proof" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /codex cli/i }));
+    fireEvent.click(screen.getByRole("button", { name: /claude code/i }));
     fireEvent.change(screen.getByLabelText(/agents to seed/i), {
       target: { value: "2" },
     });
@@ -256,7 +256,7 @@ describe("Operator loop integration", () => {
     fireEvent.change(screen.getByLabelText(/description/i), {
       target: { value: "Survives unmount-remount cycle" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /codex cli/i }));
+    fireEvent.click(screen.getByRole("button", { name: /claude code/i }));
     fireEvent.change(screen.getByLabelText(/agents to seed/i), {
       target: { value: "2" },
     });

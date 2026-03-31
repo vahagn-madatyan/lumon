@@ -110,14 +110,14 @@ const createUnprovisionedProject = ({
     name,
     description: "Project not yet provisioned.",
     phaseLabel: "Phase 1 — Operator Intake",
-    engineChoice: "codex",
+    engineChoice: "claude",
     agents,
     waves: { current: 1, total: 1 },
     execution: {
       stages: createCanonicalPrebuildStages({
         projectId: id,
         projectName: name,
-        engineChoice: "codex",
+        engineChoice: "claude",
         agents,
         waveCount: 1,
         stageOverrides: {
@@ -152,8 +152,8 @@ const SAMPLE_AGENTS = [
     pid: 12345,
   },
   {
-    agentId: "agent-codex-01",
-    agentType: "codex",
+    agentId: "agent-claude-extra",
+    agentType: "claude",
     status: "completed",
     lastOutput: "Tests passing: 24/24",
     elapsed: 89000,
@@ -407,7 +407,7 @@ describe("Build Execution UI", () => {
 
       expect(screen.getByTestId("build-agent-list")).toBeInTheDocument();
       expect(screen.getByTestId("build-agent-card-agent-claude-01")).toBeInTheDocument();
-      expect(screen.getByTestId("build-agent-card-agent-codex-01")).toBeInTheDocument();
+      expect(screen.getByTestId("build-agent-card-agent-claude-extra")).toBeInTheDocument();
     });
 
     it("shows agent type labels correctly", () => {
@@ -420,10 +420,10 @@ describe("Build Execution UI", () => {
       }));
 
       const claudeCard = screen.getByTestId("build-agent-card-agent-claude-01");
-      const codexCard = screen.getByTestId("build-agent-card-agent-codex-01");
+      const codexCard = screen.getByTestId("build-agent-card-agent-claude-extra");
 
       expect(within(claudeCard).getByText("Claude Code")).toBeInTheDocument();
-      expect(within(codexCard).getByText("Codex CLI")).toBeInTheDocument();
+      expect(within(codexCard).getByText("Claude Code")).toBeInTheDocument();
     });
 
     it("shows agent status badges", () => {
@@ -436,7 +436,7 @@ describe("Build Execution UI", () => {
       }));
 
       const claudeCard = screen.getByTestId("build-agent-card-agent-claude-01");
-      const codexCard = screen.getByTestId("build-agent-card-agent-codex-01");
+      const codexCard = screen.getByTestId("build-agent-card-agent-claude-extra");
 
       expect(within(claudeCard).getByText("running")).toBeInTheDocument();
       expect(within(codexCard).getByText("completed")).toBeInTheDocument();
@@ -454,7 +454,7 @@ describe("Build Execution UI", () => {
       expect(screen.getByTestId("build-agent-card-agent-claude-01-last-output")).toHaveTextContent(
         "Implementing auth module...",
       );
-      expect(screen.getByTestId("build-agent-card-agent-codex-01-last-output")).toHaveTextContent(
+      expect(screen.getByTestId("build-agent-card-agent-claude-extra-last-output")).toHaveTextContent(
         "Tests passing: 24/24",
       );
     });
@@ -599,7 +599,7 @@ describe("Build Execution UI", () => {
       expect(screen.getByTestId("build-status-badge")).toBeInTheDocument();
       expect(screen.getByTestId("build-agent-list")).toBeInTheDocument();
       expect(screen.getByTestId("build-agent-card-agent-claude-01")).toBeInTheDocument();
-      expect(screen.getByTestId("build-agent-card-agent-codex-01")).toBeInTheDocument();
+      expect(screen.getByTestId("build-agent-card-agent-claude-extra")).toBeInTheDocument();
     });
 
     it("error state elements have data-testid attributes", () => {

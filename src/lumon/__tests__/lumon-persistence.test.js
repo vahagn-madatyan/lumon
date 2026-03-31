@@ -52,10 +52,10 @@ describe("Lumon persistence", () => {
         {
           id: "persisted-project",
           name: "Persisted Project",
-          engineChoice: "codex",
+          engineChoice: "claude",
           createdAt: "2026-02-10T00:00:00.000Z",
           updatedAt: "2026-02-10T00:30:00.000Z",
-          agents: [{ id: "persisted-agent", name: "Persisted Agent", type: "codex" }],
+          agents: [{ id: "persisted-agent", name: "Persisted Agent", type: "claude" }],
           execution: {
             stages: [
               {
@@ -152,7 +152,7 @@ describe("Lumon persistence", () => {
 
     renderProvider({
       initialState: createLumonState({
-        projects: [{ id: "from-props", name: "From Props", engineChoice: "codex" }],
+        projects: [{ id: "from-props", name: "From Props", engineChoice: "claude" }],
         selection: { projectId: "from-props" },
       }),
     });
@@ -178,8 +178,7 @@ describe("Lumon persistence", () => {
 
     renderProvider();
 
-    expect(readProbe().projectIds[0]).toBe("wheely");
-    expect(readProbe().projectIds).toHaveLength(14);
+    expect(readProbe().projectIds).toHaveLength(0);
   });
 
   it("treats write-denied storage as unavailable and falls back safely", () => {
@@ -200,8 +199,7 @@ describe("Lumon persistence", () => {
     renderProvider({ persistence });
 
     expect(persistence.isAvailable()).toBe(false);
-    expect(readProbe().projectIds[0]).toBe("wheely");
-    expect(readProbe().projectIds).toHaveLength(14);
+    expect(readProbe().projectIds).toHaveLength(0);
     expect(unavailableStorage.setItem).toHaveBeenCalled();
   });
 });

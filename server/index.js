@@ -113,14 +113,12 @@ app.listen(PORT, async () => {
     console.log(`[bridge] gh CLI: NOT AVAILABLE — provisioning will fail. Install: https://cli.github.com`);
   }
 
-  // Check agent CLI availability at startup
-  for (const agentType of ["claude", "codex"]) {
-    const agentResult = await checkAgentAvailability(agentType);
-    if (agentResult.available) {
-      console.log(`[bridge] ${agentType} CLI: available (version ${agentResult.version})`);
-    } else {
-      console.log(`[bridge] ${agentType} CLI: not available — builds with this agent will return 503`);
-    }
+  // Check Claude Code CLI availability at startup
+  const agentResult = await checkAgentAvailability("claude");
+  if (agentResult.available) {
+    console.log(`[bridge] claude CLI: available (version ${agentResult.version})`);
+  } else {
+    console.log(`[bridge] claude CLI: not available — builds will return 503`);
   }
 });
 

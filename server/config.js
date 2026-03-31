@@ -11,9 +11,6 @@
 // ---------------------------------------------------------------------------
 
 export const AUTH_CONFIG = {
-  /** When true, skip Tailscale header checks and use a dev identity */
-  devMode: process.env.LUMON_DEV_MODE === "true" || process.env.LUMON_DEV_MODE === "1",
-
   /** Rate limit settings for sensitive POST endpoints */
   rateLimits: {
     /** Pipeline trigger — 10 requests per 60 seconds */
@@ -36,14 +33,8 @@ export const EXECUTION_CONFIG = {
     claude: {
       command: "claude",
       versionArgs: ["--version"],
-      execArgs: ["--output-format", "stream-json"],
+      execArgs: ["-p", "--output-format", "stream-json"],
       versionPattern: /claude[- ](?:code[- ])?(?:v(?:ersion)?[ ]?)?([\d.]+)/i,
-    },
-    codex: {
-      command: "codex",
-      versionArgs: ["--version"],
-      execArgs: ["exec", "--json"],
-      versionPattern: /codex[- ](?:v(?:ersion)?[ ]?)?([\d.]+)/i,
     },
   },
   defaultTimeout: 300,          // seconds

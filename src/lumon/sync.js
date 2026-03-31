@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/** Backoff range: 2s → 4s → 8s → 16s → 30s cap */
+const INITIAL_BACKOFF_MS = 2000;
+const MAX_BACKOFF_MS = 30_000;
+
 /**
  * useServerSync — connects to the bridge server SSE stream and dispatches
  * reducer actions from server events. Also exposes trigger/approve API helpers.
+ *
+ * Uses manual reconnection with exponential backoff to prevent the infinite
+ * re-render loop caused by EventSource's native auto-reconnect firing onerror
+ * repeatedly when the server is unreachable.
  *
  * @param {{ projectId: string|null, dispatch: Function }} options
  * @returns {{ connected: boolean, lastEvent: object|null, error: string|null, triggerPipeline: Function, approvePipeline: Function }}
@@ -12,6 +20,8 @@ export function useServerSync({ projectId, dispatch }) {
   const [lastEvent, setLastEvent] = useState(null);
   const [error, setError] = useState(null);
   const esRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const backoffRef = useRef(INITIAL_BACKOFF_MS);
 
   useEffect(() => {
     if (!projectId) {
@@ -20,21 +30,31 @@ export function useServerSync({ projectId, dispatch }) {
         esRef.current.close();
         esRef.current = null;
       }
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      backoffRef.current = INITIAL_BACKOFF_MS;
       setConnected(false);
       setLastEvent(null);
       setError(null);
       return;
     }
 
-    const url = `/api/pipeline/events/${encodeURIComponent(projectId)}`;
-    const es = new EventSource(url);
-    esRef.current = es;
+    let cancelled = false;
 
-    es.addEventListener("connected", () => {
-      setConnected(true);
-      setError(null);
-      console.log(`[sync] SSE connected projectId=${projectId}`);
-    });
+    const connect = () => {
+      if (cancelled) return;
+
+      const url = `/api/pipeline/events/${encodeURIComponent(projectId)}`;
+      const es = new EventSource(url);
+      esRef.current = es;
+
+      es.addEventListener("connected", () => {
+        if (cancelled) return;
+        backoffRef.current = INITIAL_BACKOFF_MS; // reset on success
+        setConnected(true);
+        setError(null);
+        console.log(`[sync] SSE connected projectId=${projectId}`);
+      });
 
     es.addEventListener("stage-update", (event) => {
       try {
@@ -477,15 +497,34 @@ export function useServerSync({ projectId, dispatch }) {
     });
 
     es.onerror = () => {
+      if (cancelled) return;
       setConnected(false);
-      setError("SSE connection lost — reconnecting");
-      console.log(`[sync] SSE error projectId=${projectId} — EventSource will auto-reconnect`);
+
+      // Close the current EventSource to prevent its native auto-reconnect
+      es.close();
+      esRef.current = null;
+
+      const delay = backoffRef.current;
+      backoffRef.current = Math.min(backoffRef.current * 2, MAX_BACKOFF_MS);
+      setError(`SSE disconnected — retrying in ${Math.round(delay / 1000)}s`);
+      console.log(`[sync] SSE error projectId=${projectId} — reconnecting in ${delay}ms`);
+
+      reconnectTimerRef.current = setTimeout(connect, delay);
     };
+    }; // end connect()
+
+    connect();
 
     // Cleanup: close EventSource when projectId changes or component unmounts
     return () => {
-      es.close();
-      esRef.current = null;
+      cancelled = true;
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      backoffRef.current = INITIAL_BACKOFF_MS;
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
       setConnected(false);
       console.log(`[sync] SSE closed projectId=${projectId}`);
     };

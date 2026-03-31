@@ -218,7 +218,7 @@ describe("useServerSync", () => {
       es._triggerError();
     });
     expect(result.current.connected).toBe(false);
-    expect(result.current.error).toBe("SSE connection lost — reconnecting");
+    expect(result.current.error).toBe("SSE disconnected — retrying in 2s");
 
     // Simulate reconnected
     act(() => {

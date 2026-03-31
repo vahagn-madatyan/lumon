@@ -1,21 +1,19 @@
 import { Router } from "express";
 import { AUTH_CONFIG } from "../config.js";
-import { logEvent } from "../audit.js";
 
 // ---------------------------------------------------------------------------
 // Auth middleware — gates all requests behind Tailscale identity headers
 // ---------------------------------------------------------------------------
 
 /**
- * Express middleware that enforces Tailscale identity headers on every request.
+ * Express middleware that identifies the operator.
  *
- * Bypass order:
+ * Priority order:
  * 1. VITEST env → skip entirely (tests run without identity)
- * 2. LUMON_DEV_MODE → set a synthetic dev identity on req.lumonUser
- * 3. Tailscale-User-Login header → set real identity on req.lumonUser
- * 4. Otherwise → 401
+ * 2. Tailscale-User-Login header → set real Tailscale identity on req.lumonUser
+ * 3. Otherwise → set local dev identity (never 401 — local dev is the default)
  *
- * Sets `req.lumonUser = { login, name }` on success.
+ * Sets `req.lumonUser = { login, name, source }` on success.
  */
 export function authMiddleware(req, res, next) {
   // 1. Test bypass — VITEST is set by vitest runner
@@ -23,36 +21,16 @@ export function authMiddleware(req, res, next) {
     return next();
   }
 
-  // 2. Dev-mode bypass — synthetic identity
-  if (AUTH_CONFIG.devMode) {
-    req.lumonUser = { login: "dev@lumon.local", name: "Dev Operator" };
+  // 2. Tailscale headers — use them when available (additive, not required)
+  const login = req.headers["tailscale-user-login"];
+  if (login && login.trim() !== "") {
+    const name = req.headers["tailscale-user-name"] || login;
+    req.lumonUser = { login, name, source: "tailscale" };
     return next();
   }
 
-  // 3. Tailscale headers
-  const login = req.headers["tailscale-user-login"];
-  if (!login || login.trim() === "") {
-    // Log rejection — wrap in try/catch so logEvent failures don't prevent 401
-    try {
-      const projectId = req.body?.projectId || req.params?.projectId || "unknown";
-      logEvent(projectId, "auth-rejected", {
-        reason: "missing-tailscale-identity",
-        ip: req.ip,
-        path: req.path,
-        method: req.method,
-      });
-    } catch {
-      // logEvent failure must not prevent the 401 response
-    }
-
-    return res.status(401).json({
-      error: "Unauthorized",
-      reason: "Tailscale-User-Login header is required",
-    });
-  }
-
-  const name = req.headers["tailscale-user-name"] || login;
-  req.lumonUser = { login, name };
+  // 3. Local dev identity — always allow, never 401
+  req.lumonUser = { login: "operator@local", name: "Local Operator", source: "local" };
   return next();
 }
 
@@ -136,6 +114,7 @@ authRouter.get("/identity", (req, res) => {
     return res.json({
       login: req.lumonUser.login,
       name: req.lumonUser.name,
+      source: req.lumonUser.source ?? "unknown",
       authenticated: true,
     });
   }
@@ -144,6 +123,7 @@ authRouter.get("/identity", (req, res) => {
   return res.json({
     login: "anonymous",
     name: "Anonymous (test mode)",
+    source: "test",
     authenticated: false,
   });
 });

@@ -27,14 +27,14 @@ const createProject = ({
     name,
     description,
     phaseLabel: "Phase 1 — Operator Intake",
-    engineChoice: "codex",
+    engineChoice: "claude",
     agents,
     waves: { current: 1, total: 1 },
     execution: {
       stages: createCanonicalPrebuildStages({
         projectId: id,
         projectName: name,
-        engineChoice: "codex",
+        engineChoice: "claude",
         agents,
         waveCount: 1,
         stageOverrides: {

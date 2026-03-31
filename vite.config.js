@@ -17,6 +17,9 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    watch: {
+      ignored: ["**/.gsd/**", "**/.bg-shell/**", "**/.bg_shell/**", "**/server/data/**", "**/.artifacts/**"],
+    },
   },
   test: {
     environment: "jsdom",

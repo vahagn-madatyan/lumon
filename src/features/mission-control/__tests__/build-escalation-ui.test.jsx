@@ -127,8 +127,8 @@ const TELEMETRY_BUILD = {
       },
     },
     {
-      agentId: "agent-codex-01",
-      agentType: "codex",
+      agentId: "agent-claude-extra",
+      agentType: "claude",
       status: "running",
       lastOutput: "Generating tests...",
       elapsed: 45000,
@@ -357,8 +357,8 @@ describe("Build Escalation UI", () => {
     it("does NOT render telemetry bar when telemetry is null (raw fallback)", () => {
       renderHandoffTab(createProvisionedProject({ buildExecution: TELEMETRY_BUILD }));
 
-      // agent-codex-01 has telemetry: null
-      expect(screen.queryByTestId("build-agent-telemetry-agent-codex-01")).not.toBeInTheDocument();
+      // agent-claude-extra has telemetry: null
+      expect(screen.queryByTestId("build-agent-telemetry-agent-claude-extra")).not.toBeInTheDocument();
     });
   });
 

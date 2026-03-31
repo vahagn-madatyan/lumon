@@ -49,7 +49,7 @@ describe("MissionControl project registry", () => {
     fireEvent.change(screen.getByLabelText(/description/i), {
       target: { value: "Reload-proof registry creation flow" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /codex cli/i }));
+    fireEvent.click(screen.getByRole("button", { name: /claude code/i }));
     fireEvent.change(screen.getByLabelText(/agents to seed/i), {
       target: { value: "3" },
     });
@@ -59,8 +59,8 @@ describe("MissionControl project registry", () => {
       expect(screen.getByRole("heading", { name: "Registry Orbit" })).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("selected-project-engine")).toHaveTextContent("Codex CLI");
-    expect(screen.getByTestId("dashboard-project-engine-registry-orbit")).toHaveTextContent("Codex CLI");
+    expect(screen.getByTestId("selected-project-engine")).toHaveTextContent("Claude Code");
+    expect(screen.getByTestId("dashboard-project-engine-registry-orbit")).toHaveTextContent("Claude Code");
     expect(screen.getAllByText(/Reload-proof registry creation flow/i)).toHaveLength(2);
     expect(screen.getByTestId("selected-project-pipeline-status")).toHaveTextContent("Waiting");
     expect(screen.getByTestId("selected-project-current-stage")).toHaveTextContent("Intake");
@@ -77,7 +77,7 @@ describe("MissionControl project registry", () => {
       expect(envelope?.state?.projects?.[0]).toMatchObject({
         id: "registry-orbit",
         name: "Registry Orbit",
-        engineChoice: "codex",
+        engineChoice: "claude",
         execution: {
           currentStageId: "registry-orbit:intake",
           currentGateId: "gate:intake-review",
@@ -96,8 +96,8 @@ describe("MissionControl project registry", () => {
     render(<MissionControl />);
 
     expect(screen.getByRole("heading", { name: "Registry Orbit" })).toBeInTheDocument();
-    expect(screen.getByTestId("selected-project-engine")).toHaveTextContent("Codex CLI");
-    expect(screen.getByTestId("dashboard-project-engine-registry-orbit")).toHaveTextContent("Codex CLI");
+    expect(screen.getByTestId("selected-project-engine")).toHaveTextContent("Claude Code");
+    expect(screen.getByTestId("dashboard-project-engine-registry-orbit")).toHaveTextContent("Claude Code");
     expect(screen.getByTestId("selected-project-pipeline-status")).toHaveTextContent("Waiting");
     expect(screen.getByTestId("selected-project-current-stage")).toHaveTextContent("Intake");
     expect(screen.getByTestId("selected-project-current-gate")).toHaveTextContent("Intake approval");

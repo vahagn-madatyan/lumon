@@ -1,4 +1,4 @@
-const VALID_ENGINE_CHOICES = new Set(["claude", "codex"]);
+const VALID_ENGINE_CHOICES = new Set(["claude"]);
 
 export const LUMON_APPROVAL_STATES = Object.freeze({
   notRequired: "not_required",
@@ -156,7 +156,6 @@ const DEFAULT_PROJECT_PHASE_LABEL = "Phase 1 — Operator Intake";
 const DEFAULT_PROJECT_DESCRIPTION = "Operator-created project awaiting mission assignment.";
 const ENGINE_LABELS = {
   claude: "Claude Code",
-  codex: "Codex CLI",
 };
 
 const clampProgress = (value) => {

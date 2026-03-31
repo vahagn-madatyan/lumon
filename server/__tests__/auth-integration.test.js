@@ -61,13 +61,18 @@ describe("Auth rejection (non-VITEST mode)", () => {
     process.env.VITEST = origVitest;
   });
 
-  it("returns 401 on /api/auth/identity without Tailscale headers when VITEST is unset", async () => {
+  it("returns local identity on /api/auth/identity without Tailscale headers when VITEST is unset", async () => {
     delete process.env.VITEST;
 
     const res = await request(app).get("/api/auth/identity");
 
-    expect(res.status).toBe(401);
-    expect(res.body.error).toBe("Unauthorized");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      login: "operator@local",
+      name: "Local Operator",
+      source: "local",
+      authenticated: true,
+    });
 
     process.env.VITEST = origVitest;
   });

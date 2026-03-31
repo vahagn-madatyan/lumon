@@ -363,7 +363,7 @@ describe("lumonReducer — build execution actions", () => {
       const s2 = lumonReducer(
         s1,
         lumonActions.updateBuildAgent("test-project", "agent-xyz", {
-          agentType: "codex",
+          agentType: "claude",
           status: "running",
           pid: 200,
         }),

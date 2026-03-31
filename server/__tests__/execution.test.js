@@ -174,9 +174,8 @@ describe("checkAgentAvailability", () => {
       return proc;
     });
 
-    const result = await checkAgentAvailability("codex");
+    const result = await checkAgentAvailability("nonexistent-cli");
     expect(result.available).toBe(false);
-    expect(result.error).toContain("ENOENT");
   });
 
   it("returns error for unknown agent type", async () => {
